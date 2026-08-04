@@ -1,0 +1,21 @@
+services:
+  - type: web
+    name: bookinn
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: 20.19.0
+      - key: JWT_SECRET
+        sync: false # set your own value in the Render dashboard
+      - key: ADMIN_EMAIL
+        sync: false # set your own value in the Render dashboard
+      - key: ADMIN_PASSWORD
+        sync: false # set your own value in the Render dashboard
+      - key: PAYSTACK_SECRET_KEY
+        sync: false # optional — only needed if you're using Paystack payments
+      - key: VITE_PAYSTACK_PUBLIC_KEY
+        sync: false # optional — only needed if you're using Paystack payments
