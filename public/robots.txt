@@ -1,0 +1,8 @@
+User-agent: *
+   Allow: /
+   Disallow: /owner-dashboard
+   Disallow: /platform-admin
+   Disallow: /account
+   Disallow: /login
+
+   Sitemap: https://bookinn-19g2.onrender.com/sitemap.xml
