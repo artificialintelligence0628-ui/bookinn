@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS listings (
   video TEXT NOT NULL DEFAULT '',
   walkthrough JSONB NOT NULL DEFAULT '[]',
   amenities JSONB NOT NULL DEFAULT '[]',
-  desc TEXT NOT NULL DEFAULT '',
+ "desc" TEXT NOT NULL DEFAULT '',
   location_description TEXT NOT NULL DEFAULT '',
   owner_email TEXT NOT NULL DEFAULT '',
   owner_whatsapp TEXT NOT NULL DEFAULT '',
