@@ -75,7 +75,7 @@ const LISTING_COLUMNS = {
   distance: "distance", pricingPeriod: "pricing_period", rating: "rating",
   reviewCount: "review_count", featured: "featured", image: "image",
   images: "images", video: "video", walkthrough: "walkthrough",
-  amenities: "amenities", desc: "desc", locationDescription: "location_description",
+  amenities: "amenities", desc: '"desc"', locationDescription: "location_description",
   ownerEmail: "owner_email", ownerWhatsapp: "owner_whatsapp",
   availability: "availability", reviews: "reviews", views: "views",
 };
@@ -105,7 +105,7 @@ export const store = {
       `INSERT INTO listings
         (owner_id, name, type, room_options, room_type, price, bath, kitchen, university,
          distance, pricing_period, rating, review_count, featured, image, images, video,
-         walkthrough, amenities, desc, location_description, owner_email, owner_whatsapp,
+        walkthrough, amenities, "desc", location_description, owner_email, owner_whatsapp,
          availability, reviews, views)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
        RETURNING *`,
