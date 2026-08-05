@@ -6,6 +6,7 @@ import jwt from "jsonwebtoken";
 import path from "path";
 import { fileURLToPath } from "url";
 import { store } from "./store.js";
+import { migrate } from "./db.js";
 import { PLAN_PRICES, PLAN_FEATURES, PLAN_ORDER, maxListingsForView, computeSubscriptionView, reminderForView } from "./plans.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,6 +35,11 @@ const APARTMENT_ROOM_TYPES = ["Self-contained", "Shared Apartment"];
 // server starts (only if no Admin account exists yet). Override via .env in production.
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@bookinn.app";
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin12345";
+
+// Wraps an async route/middleware so a rejected promise (e.g. a database
+// error) is forwarded to Express's error handler instead of crashing the
+// request silently — Express 4 doesn't catch async errors on its own.
+const ah = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next);
 
 function signToken(user) {
   return jwt.sign({ sub: user.id, email: user.email, name: user.name }, JWT_SECRET, { expiresIn: "7d" });
@@ -64,8 +70,8 @@ function requireAuth(req, res, next) {
 // Property owners must have a currently-visible subscription (active paid plan or
 // live free trial — never trusted from the client, always recomputed from real
 // timestamps) before they can create/edit/delete a listing they own.
-function requireActiveOwner(req, res, next) {
-  const user = store.getUserById(req.user.sub);
+const requireActiveOwner = ah(async (req, res, next) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts can manage listings." });
   const view = computeSubscriptionView(user);
@@ -74,20 +80,21 @@ function requireActiveOwner(req, res, next) {
   }
   req.subscriptionView = view;
   next();
-}
+});
 
 // A listing can only be edited or deleted by the owner account that created it
 // (or by a platform Admin) — otherwise any subscribed owner could touch anyone's listing.
-function requireOwnsListing(req, res, next) {
+const requireOwnsListing = ah(async (req, res, next) => {
   const id = Number(req.params.id);
-  const listing = store.getListings().find((l) => l.id === id);
+  const listings = await store.getListings();
+  const listing = listings.find((l) => l.id === id);
   if (!listing) return res.status(404).json({ error: "Listing not found." });
-  const user = store.getUserById(req.user.sub);
+  const user = await store.getUserById(req.user.sub);
   if (user.role !== ADMIN_ROLE && listing.ownerId !== user.id) {
     return res.status(403).json({ error: "You can only manage your own listings." });
   }
   next();
-}
+});
 
 // Gates creating a NEW listing. How many listings an owner may have depends on
 // their CURRENT plan (Basic: 1, Premium: 2, Featured: 3) — room count inside a
@@ -99,12 +106,13 @@ function requireOwnsListing(req, res, next) {
 // must explicitly start it themselves via POST /api/subscription/start-trial
 // first (see below). This route only checks whether a trial/subscription is
 // already live.
-function requireCanCreateListing(req, res, next) {
-  const user = store.getUserById(req.user.sub);
+const requireCanCreateListing = ah(async (req, res, next) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts can create listings." });
 
-  const ownerListingCount = store.getListingsByOwner(user.id).length;
+  const ownerListings = await store.getListingsByOwner(user.id);
+  const ownerListingCount = ownerListings.length;
   const view = computeSubscriptionView(user);
 
   if (!view.isListingVisible) {
@@ -124,49 +132,49 @@ function requireCanCreateListing(req, res, next) {
   }
   req.subscriptionView = view;
   return next();
-}
+});
 
 // Platform admin routes (site-wide stats, all users) are restricted to the Admin role.
-function requireAdmin(req, res, next) {
-  const user = store.getUserById(req.user.sub);
+const requireAdmin = ah(async (req, res, next) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (user.role !== ADMIN_ROLE) return res.status(403).json({ error: "Admin access only." });
   next();
-}
+});
 
 // ---------------------------------------------------------
 // Auth
 // ---------------------------------------------------------
-app.post("/api/auth/signup", async (req, res) => {
+app.post("/api/auth/signup", ah(async (req, res) => {
   const { name, email, password, role } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: "Name, email and password are required." });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: "Enter a valid email address." });
   if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
   if (role && !ROLES.includes(role)) return res.status(400).json({ error: "Invalid account type." });
-  if (store.getUserByEmail(email)) return res.status(409).json({ error: "An account with this email already exists." });
+  if (await store.getUserByEmail(email)) return res.status(409).json({ error: "An account with this email already exists." });
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = store.addUser({ name, email, passwordHash, role });
+  const user = await store.addUser({ name, email, passwordHash, role });
   const token = signToken(user);
   res.status(201).json({ token, user: publicUser(user) });
-});
+}));
 
-app.post("/api/auth/login", async (req, res) => {
+app.post("/api/auth/login", ah(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
-  const user = store.getUserByEmail(email);
+  const user = await store.getUserByEmail(email);
   if (!user) return res.status(401).json({ error: "Invalid email or password." });
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "Invalid email or password." });
   const token = signToken(user);
   res.json({ token, user: publicUser(user) });
-});
+}));
 
-app.get("/api/auth/me", requireAuth, (req, res) => {
-  const user = store.getUserById(req.user.sub);
+app.get("/api/auth/me", requireAuth, ah(async (req, res) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   res.json({ user: publicUser(user) });
-});
+}));
 
 // ---------------------------------------------------------
 // Payments (Paystack)
@@ -174,7 +182,7 @@ app.get("/api/auth/me", requireAuth, (req, res) => {
 // The Paystack popup on the frontend reports success client-side, which can be spoofed —
 // so before unlocking anything we re-check the transaction directly with Paystack using the
 // secret key, and confirm the amount/currency/status all match the plan being purchased.
-app.post("/api/payments/verify", requireAuth, async (req, res) => {
+app.post("/api/payments/verify", requireAuth, ah(async (req, res) => {
   const { reference, tier } = req.body || {};
   if (!reference || !SUBSCRIPTION_TIERS.includes(tier)) {
     return res.status(400).json({ error: "A payment reference and a valid plan are required." });
@@ -198,42 +206,42 @@ app.post("/api/payments/verify", requireAuth, async (req, res) => {
     if (tx.currency !== "GHS" || tx.amount !== expectedAmount) {
       return res.status(402).json({ error: "The paid amount didn't match the selected plan." });
     }
-    const updated = store.setUserSubscription(req.user.sub, tier);
+    const updated = await store.setUserSubscription(req.user.sub, tier);
     if (!updated) return res.status(404).json({ error: "User not found." });
     res.json({ user: publicUser(updated) });
   } catch (err) {
     console.error("Paystack verification error:", err);
     res.status(502).json({ error: "Payment verification failed. Please try again." });
   }
-});
+}));
 
 // Starts the one-time 30-day free trial. This is a deliberate, explicit action —
 // the owner clicks "Start Free Trial" themselves; the trial is never granted as
 // a side effect of any other request (e.g. creating a listing). Still fully
 // server-verified: hasUsedFreeTrial and the live subscription view are re-checked
 // here, never trusted from the client.
-app.post("/api/subscription/start-trial", requireAuth, (req, res) => {
-  const user = store.getUserById(req.user.sub);
+app.post("/api/subscription/start-trial", requireAuth, ah(async (req, res) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts can start a free trial." });
   if (user.hasUsedFreeTrial) return res.status(403).json({ error: "You've already used your free trial. Subscribe to a plan to continue." });
   const view = computeSubscriptionView(user);
   if (view.isListingVisible) return res.status(400).json({ error: "You already have an active trial or subscription." });
-  const updated = store.grantFreeTrial(user.id);
+  const updated = await store.grantFreeTrial(user.id);
   res.json({ user: publicUser(updated) });
-});
+}));
 
 // Cancels an active paid subscription (the demo has no billing-provider webhook,
 // so cancellation takes effect immediately rather than at period end).
-app.post("/api/subscription/cancel", requireAuth, (req, res) => {
-  const user = store.getUserById(req.user.sub);
+app.post("/api/subscription/cancel", requireAuth, ah(async (req, res) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts have a subscription." });
   const view = computeSubscriptionView(user);
   if (view.status !== "active") return res.status(400).json({ error: "There's no active paid subscription to cancel." });
-  const updated = store.cancelSubscription(user.id);
+  const updated = await store.cancelSubscription(user.id);
   res.json({ user: publicUser(updated) });
-});
+}));
 
 // ---------------------------------------------------------
 // Subscription status — the single endpoint the owner dashboard polls for its
@@ -241,8 +249,8 @@ app.post("/api/subscription/cancel", requireAuth, (req, res) => {
 // computed live from real timestamps, never a client-supplied or manually
 // decremented number.
 // ---------------------------------------------------------
-app.get("/api/subscription/me", requireAuth, (req, res) => {
-  const user = store.getUserById(req.user.sub);
+app.get("/api/subscription/me", requireAuth, ah(async (req, res) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   const view = computeSubscriptionView(user);
 
@@ -250,7 +258,7 @@ app.get("/api/subscription/me", requireAuth, (req, res) => {
   const candidate = reminderForView(view);
   if (candidate && !(user.subscription.remindersSent || {})[candidate.key]) {
     reminder = candidate;
-    store.markReminderSent(user.id, candidate.key);
+    await store.markReminderSent(user.id, candidate.key);
   }
 
   res.json({
@@ -258,7 +266,7 @@ app.get("/api/subscription/me", requireAuth, (req, res) => {
     plans: { prices: PLAN_PRICES, features: PLAN_FEATURES },
     reminder,
   });
-});
+}));
 
 // A hostel can offer several room occupancy categories at once (e.g. "Two in a room" at
 // GH₵1,200 AND "Four in a room" at GH₵800) — each with its own price. Apartments only ever
@@ -286,8 +294,6 @@ function normalizeRoomOptions(type, rawOptions) {
     roomType: cleaned.length > 1 ? `${cleaned.length} room types` : cleaned[0].roomType,
   };
 }
-
-
 
 // Enforces the photo/video/featured-badge limits for the owner's CURRENT effective
 // plan when they create or update a listing. The cover photo is the listing's
@@ -343,8 +349,7 @@ function enforcePlanOnListingPayload(view, l) {
 // downgrade takes effect immediately even on a listing that was saved while on a
 // higher plan), and attaches search-ranking/badge info. Returns null when the
 // listing should not be shown publicly at all.
-function toPublicListing(listing) {
-  const owner = store.getUserById(listing.ownerId);
+function toPublicListing(listing, owner) {
   const view = owner ? computeSubscriptionView(owner) : { isListingVisible: false, features: {}, effectivePlan: null };
   if (!view.isListingVisible) return null;
   const { features, effectivePlan } = view;
@@ -366,11 +371,6 @@ function toPublicListing(listing) {
   };
 }
 
-// Public feed — students only ever see listings whose owner currently has an
-// active trial or paid subscription (never a paused/expired one), and each
-// listing is shaped down to exactly what the owner's live plan allows (photos,
-// video, WhatsApp, badges) — enforced here, not just hidden in the UI.
-// Sorted by plan-based search ranking: Featured > Premium > Basic/trial.
 // Which of this owner's listings are within their CURRENT plan's listing cap.
 // Nothing is ever deleted on a downgrade — if an owner had 3 listings on
 // Featured and drops to Premium (cap 2), the 3rd stays stored but is hidden
@@ -384,33 +384,38 @@ function visibleListingIdsForOwner(user, ownerListings) {
   return new Set(ids);
 }
 
-app.get("/api/listings", (req, res) => {
-  const all = store.getListings();
+app.get("/api/listings", ah(async (req, res) => {
+  const all = await store.getListings();
   const byOwner = {};
   all.forEach((l) => { (byOwner[l.ownerId] ||= []).push(l); });
+
+  const ownerIds = Object.keys(byOwner).map(Number);
+  const owners = await Promise.all(ownerIds.map((id) => store.getUserById(id)));
+  const ownerById = new Map(owners.filter(Boolean).map((u) => [u.id, u]));
+
   const visibleIds = new Set();
   Object.entries(byOwner).forEach(([ownerId, ownerListings]) => {
-    const owner = store.getUserById(Number(ownerId));
+    const owner = ownerById.get(Number(ownerId));
     if (!owner) return;
     visibleListingIdsForOwner(owner, ownerListings).forEach((id) => visibleIds.add(id));
   });
   const listings = all
     .filter((l) => visibleIds.has(l.id))
-    .map(toPublicListing)
+    .map((l) => toPublicListing(l, ownerById.get(l.ownerId)))
     .filter(Boolean)
     .sort((a, b) => b.searchPriority - a.searchPriority);
   res.json({ listings });
-});
+}));
 
 // Owner's own listings — unfiltered (includes a paused/expired listing so the
 // owner can still see and manage it) and annotated with their live subscription
 // view so the dashboard always reflects real, server-computed status.
-app.get("/api/listings/mine", requireAuth, (req, res) => {
-  const user = store.getUserById(req.user.sub);
+app.get("/api/listings/mine", requireAuth, ah(async (req, res) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts have listings." });
   const view = computeSubscriptionView(user);
-  const ownerListings = store.getListingsByOwner(user.id);
+  const ownerListings = await store.getListingsByOwner(user.id);
   const visibleIds = visibleListingIdsForOwner(user, ownerListings);
   const listings = ownerListings.map((l) => ({
     ...l,
@@ -418,9 +423,9 @@ app.get("/api/listings/mine", requireAuth, (req, res) => {
     photosOverLimit: Math.max(0, (l.images?.length || 0) - view.features.maxPhotos),
   }));
   res.json({ listings, subscriptionView: view, maxListings: maxListingsForView(view) });
-});
+}));
 
-app.post("/api/listings", requireAuth, requireCanCreateListing, (req, res) => {
+app.post("/api/listings", requireAuth, requireCanCreateListing, ah(async (req, res) => {
   const l = req.body || {};
   const type = l.type === "Apartment" ? "Apartment" : "Hostel";
   if (!l.name) return res.status(400).json({ error: "Listing name is required." });
@@ -437,7 +442,7 @@ app.post("/api/listings", requireAuth, requireCanCreateListing, (req, res) => {
   }
   const planCheck = enforcePlanOnListingPayload(req.subscriptionView, l);
   if (planCheck.error) return res.status(400).json({ error: planCheck.error });
-  const listing = store.addListing({
+  const listing = await store.addListing({
     ownerId: req.user.sub,
     name: l.name,
     type,
@@ -464,11 +469,11 @@ app.post("/api/listings", requireAuth, requireCanCreateListing, (req, res) => {
     availability: ["Space available", "Partly booked", "Fully booked"].includes(l.availability) ? l.availability : "Space available",
     reviews: [],
   });
-  const updatedUser = store.getUserById(req.user.sub);
+  const updatedUser = await store.getUserById(req.user.sub);
   res.status(201).json({ listing, user: publicUser(updatedUser) });
-});
+}));
 
-app.put("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing, (req, res) => {
+app.put("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing, ah(async (req, res) => {
   const id = Number(req.params.id);
   const l = req.body || {};
   const type = l.type === "Apartment" ? "Apartment" : "Hostel";
@@ -509,68 +514,69 @@ app.put("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing
     ownerWhatsapp: l.ownerWhatsapp || "",
     availability: ["Space available", "Partly booked", "Fully booked"].includes(l.availability) ? l.availability : "Space available",
   };
-  const updated = store.updateListing(id, patch);
+  const updated = await store.updateListing(id, patch);
   if (!updated) return res.status(404).json({ error: "Listing not found." });
   res.json({ listing: updated });
-});
+}));
 
-app.delete("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing, (req, res) => {
-  const ok = store.deleteListing(Number(req.params.id));
+app.delete("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing, ah(async (req, res) => {
+  const ok = await store.deleteListing(Number(req.params.id));
   if (!ok) return res.status(404).json({ error: "Listing not found." });
   res.status(204).end();
-});
+}));
 
 // Records a profile view — called once when a student opens a listing's detail page.
 // No auth required (students browse anonymously); feeds the owner dashboard's real
 // "Profile views" stat instead of a hardcoded number.
-app.post("/api/listings/:id/view", (req, res) => {
-  const updated = store.recordListingView(Number(req.params.id));
+app.post("/api/listings/:id/view", ah(async (req, res) => {
+  const updated = await store.recordListingView(Number(req.params.id));
   if (!updated) return res.status(404).json({ error: "Listing not found." });
   res.status(204).end();
-});
+}));
 
 // Student reviews — anyone can leave one, no login required.
-app.post("/api/listings/:id/reviews", (req, res) => {
+app.post("/api/listings/:id/reviews", ah(async (req, res) => {
   const id = Number(req.params.id);
   const { name, rating, text } = req.body || {};
   if (!name || !rating) return res.status(400).json({ error: "Name and a star rating are required." });
   const ratingNum = Number(rating);
   if (ratingNum < 1 || ratingNum > 10) return res.status(400).json({ error: "Rating must be between 1 and 10." });
-  const updated = store.addReview(id, { name, rating: ratingNum, text: text || "" });
+  const updated = await store.addReview(id, { name, rating: ratingNum, text: text || "" });
   if (!updated) return res.status(404).json({ error: "Listing not found." });
   res.status(201).json({ listing: updated });
-});
+}));
 
 // ---------------------------------------------------------
 // Inquiries (booking / contact form submissions)
 // ---------------------------------------------------------
-app.post("/api/inquiries", (req, res) => {
+app.post("/api/inquiries", ah(async (req, res) => {
   const { listingId, name, phone, email, moveIn, message, roomType } = req.body || {};
   if (!listingId || !name) return res.status(400).json({ error: "listingId and name are required." });
-  const inquiry = store.addInquiry({ listingId, name, phone, email, moveIn, message, roomType });
+  const inquiry = await store.addInquiry({ listingId, name, phone, email, moveIn, message, roomType });
   res.status(201).json({ inquiry });
-});
+}));
 
 // Attaches a `priority` flag to each inquiry — true when the listing's owner is on
 // a plan with the priorityEnquiries feature (Featured) — and sorts priority
 // inquiries first, newest first within each group. Keeps the "priority enquiries"
 // promise real rather than a dead PLAN_FEATURES field.
-function withPriority(inquiries) {
-  const listings = store.getListings();
+async function withPriority(inquiries) {
+  const listings = await store.getListings();
   const listingById = new Map(listings.map((l) => [l.id, l]));
   const ownerFeaturesCache = new Map();
-  const featuresForOwner = (ownerId) => {
+  const featuresForOwner = async (ownerId) => {
     if (!ownerFeaturesCache.has(ownerId)) {
-      const owner = store.getUserById(ownerId);
+      const owner = await store.getUserById(ownerId);
       ownerFeaturesCache.set(ownerId, owner ? computeSubscriptionView(owner).features : PLAN_FEATURES.Basic);
     }
     return ownerFeaturesCache.get(ownerId);
   };
-  const enriched = inquiries.map((i) => {
+  const enriched = [];
+  for (const i of inquiries) {
     const listing = listingById.get(i.listingId);
-    const priority = !!(listing && featuresForOwner(listing.ownerId).priorityEnquiries);
-    return { ...i, priority };
-  });
+    const priority = !!(listing && (await featuresForOwner(listing.ownerId)).priorityEnquiries);
+    enriched.push({ ...i, priority });
+  }
   enriched.sort((a, b) => {
     if (a.priority !== b.priority) return a.priority ? -1 : 1;
     return new Date(b.createdAt || 0) - new Date(a.createdAt || 0);
@@ -578,33 +584,37 @@ function withPriority(inquiries) {
   return enriched;
 }
 
-app.get("/api/inquiries", requireAuth, (req, res) => {
-  const user = store.getUserById(req.user.sub);
+app.get("/api/inquiries", requireAuth, ah(async (req, res) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (user.role === ADMIN_ROLE) {
-    return res.json({ inquiries: withPriority(store.getInquiries()) });
+    return res.json({ inquiries: await withPriority(await store.getInquiries()) });
   }
   if (user.role === "Owner") {
-    const myListingIds = new Set(store.getListings().filter((l) => l.ownerId === user.id).map((l) => l.id));
-    return res.json({ inquiries: withPriority(store.getInquiries().filter((i) => myListingIds.has(i.listingId))) });
+    const listings = await store.getListings();
+    const myListingIds = new Set(listings.filter((l) => l.ownerId === user.id).map((l) => l.id));
+    const inquiries = await store.getInquiries();
+    return res.json({ inquiries: await withPriority(inquiries.filter((i) => myListingIds.has(i.listingId))) });
   }
   return res.status(403).json({ error: "Only property owners and platform admins can view inquiries." });
-});
+}));
 
 // ---------------------------------------------------------
 // Owner dashboard — real, per-owner stats (replaces any hardcoded numbers on the frontend)
 // ---------------------------------------------------------
-app.get("/api/owner/stats", requireAuth, (req, res) => {
-  const user = store.getUserById(req.user.sub);
+app.get("/api/owner/stats", requireAuth, ah(async (req, res) => {
+  const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts have a dashboard." });
 
-  const myListings = store.getListings().filter((l) => l.ownerId === user.id);
+  const allListings = await store.getListings();
+  const myListings = allListings.filter((l) => l.ownerId === user.id);
   const myListingIds = new Set(myListings.map((l) => l.id));
 
   const now = new Date();
   const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
-  const inquiriesThisMonthList = store.getInquiries().filter(
+  const allInquiries = await store.getInquiries();
+  const inquiriesThisMonthList = allInquiries.filter(
     (i) => myListingIds.has(i.listingId) && i.createdAt && new Date(i.createdAt).getTime() >= startOfMonth
   );
   const inquiriesThisMonth = inquiriesThisMonthList.length;
@@ -648,20 +658,20 @@ app.get("/api/owner/stats", requireAuth, (req, res) => {
     estimatedRevenueGHS,
     analyticsLocked: false,
   });
-});
+}));
 
 // ---------------------------------------------------------
 // Platform admin — accounts, listings & inquiries overview
 // ---------------------------------------------------------
-app.get("/api/admin/users", requireAuth, requireAdmin, (req, res) => {
-  const users = store.getUsers().map(publicUser);
+app.get("/api/admin/users", requireAuth, requireAdmin, ah(async (req, res) => {
+  const users = (await store.getUsers()).map(publicUser);
   res.json({ users });
-});
+}));
 
-app.get("/api/admin/stats", requireAuth, requireAdmin, (req, res) => {
-  const users = store.getUsers();
-  const listings = store.getListings();
-  const inquiries = store.getInquiries();
+app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
+  const users = await store.getUsers();
+  const listings = await store.getListings();
+  const inquiries = await store.getInquiries();
 
   const byRole = { Student: 0, Parent: 0, Owner: 0, Admin: 0 };
   let activeSubscriptions = 0;
@@ -673,10 +683,10 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, (req, res) => {
 
   const ownersOverview = [];
 
-  users.forEach((u) => {
+  for (const u of users) {
     if (byRole[u.role] !== undefined) byRole[u.role] += 1;
     if (u.createdAt && new Date(u.createdAt).getTime() >= thirtyDaysAgo) newSignups30d += 1;
-    if (u.role !== "Owner") return;
+    if (u.role !== "Owner") continue;
 
     const view = computeSubscriptionView(u);
     statusCounts[view.status] = (statusCounts[view.status] || 0) + 1;
@@ -686,7 +696,7 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, (req, res) => {
       estimatedRevenue += SUBSCRIPTION_AMOUNTS[view.plan] || 0;
     }
 
-    const ownerListings = store.getListingsByOwner(u.id);
+    const ownerListings = await store.getListingsByOwner(u.id);
     const visibleIds = visibleListingIdsForOwner(u, ownerListings);
     ownersOverview.push({
       ownerId: u.id,
@@ -703,7 +713,7 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, (req, res) => {
       nextBillingDate: view.nextBillingDate,
       cancelledAt: view.cancelledAt,
     });
-  });
+  }
 
   const inquiriesThirtyDays = inquiries.filter(
     (i) => i.createdAt && new Date(i.createdAt).getTime() >= thirtyDaysAgo
@@ -741,7 +751,7 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, (req, res) => {
     topListings,
     ownersOverview,
   });
-});
+}));
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
@@ -757,14 +767,23 @@ app.get(/^(?!\/api).*/, (req, res, next) => {
   });
 });
 
+// Generic error handler — catches anything ah() forwarded (mainly database
+// errors) so a broken query returns a clean 500 instead of crashing the process
+// or hanging the request.
+app.use((err, req, res, next) => {
+  console.error("Unhandled error:", err);
+  if (res.headersSent) return next(err);
+  res.status(500).json({ error: "Something went wrong on the server. Please try again." });
+});
+
 // Ensure a platform admin account always exists. The Admin role can never be created through
 // the public /auth/signup endpoint, so it's seeded here instead — safe to run on every boot,
 // it only creates the account the first time.
 async function ensureAdminSeeded() {
-  const existing = store.getUsers().find((u) => u.role === ADMIN_ROLE);
+  const existing = (await store.getUsers()).find((u) => u.role === ADMIN_ROLE);
   if (existing) return;
   const passwordHash = await bcrypt.hash(ADMIN_PASSWORD, 10);
-  store.addUser({ name: "BookInn Admin", email: ADMIN_EMAIL, passwordHash, role: ADMIN_ROLE });
+  await store.addUser({ name: "BookInn Admin", email: ADMIN_EMAIL, passwordHash, role: ADMIN_ROLE });
   console.log("──────────────────────────────────────────────");
   console.log(" Seeded platform admin account:");
   console.log(`   email:    ${ADMIN_EMAIL}`);
@@ -773,8 +792,14 @@ async function ensureAdminSeeded() {
   console.log("──────────────────────────────────────────────");
 }
 
-ensureAdminSeeded().then(() => {
-  app.listen(PORT, () => {
-    console.log(`BookInn API listening on http://localhost:${PORT}`);
+migrate()
+  .then(() => ensureAdminSeeded())
+  .then(() => {
+    app.listen(PORT, () => {
+      console.log(`BookInn API listening on http://localhost:${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error("Failed to start server — could not connect to / migrate the database:", err);
+    process.exit(1);
   });
-});
