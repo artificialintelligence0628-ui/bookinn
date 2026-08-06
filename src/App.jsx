@@ -601,9 +601,12 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading }) {
 /* ---------------------------------------------------------
    CONTACT / BOOKING MODAL
 --------------------------------------------------------- */
+
+  const BOOKING_FEE_GHS = 5;
+
 function ContactModal({ listing, roomType, onClose }) {
   const [sent, setSent] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState("");
   const [form, setForm] = useState({
     name: "", phone: "", email: "", moveIn: "",
@@ -611,27 +614,17 @@ function ContactModal({ listing, roomType, onClose }) {
   });
 
   const ownerWhatsappDigits = toWhatsappDigits(listing.ownerWhatsapp);
-  const waLink = ownerWhatsappDigits ? `https://wa.me/${ownerWhatsappDigits}?text=${encodeURIComponent(form.message)}` : null;
   const mailLink = listing.ownerEmail ? `mailto:${listing.ownerEmail}?subject=${encodeURIComponent("Inquiry: " + listing.name)}&body=${encodeURIComponent(form.message)}` : null;
 
-  const sendBookingRequest = async () => {
-    if (!form.name) { setSendError("Enter your name so the property manager knows who's asking."); return; }
-    setSendError("");
-    setSending(true);
-    // Open a blank tab synchronously, before the await below — mobile Safari/Chrome
-    // treat a window.open() that happens after an awaited promise resolves as a
-    // non-user-gesture popup and silently block it (this was why "opening WhatsApp"
-    // sometimes did nothing, or opened WhatsApp's home screen instead of the DM).
-    // We open the tab now and redirect it to the real wa.me link once the request
-    // succeeds. Deliberately no "noopener" here — we need the window reference back.
+  const submitBookingRequest = async (paymentReference) => {
     const waTab = ownerWhatsappDigits ? window.open("", "_blank") : null;
     try {
       await api.sendInquiry({
         listingId: listing.id, name: form.name, phone: form.phone, email: form.email,
-        moveIn: form.moveIn, message: form.message, roomType,
+        moveIn: form.moveIn,
+        message: `${form.message}\n\n(Booking fee of GH₵${BOOKING_FEE_GHS} paid — ref: ${paymentReference})`,
+        roomType,
       });
-      // Booking requests go straight to the owner's WhatsApp automatically — no extra
-      // click needed — as long as they've added a WhatsApp number to the listing.
       if (ownerWhatsappDigits) {
         const summary = [
           `New BookInn booking request for ${listing.name}${roomType ? ` — ${roomType}` : ""}`,
@@ -639,6 +632,7 @@ function ContactModal({ listing, roomType, onClose }) {
           form.phone ? `Phone: ${form.phone}` : null,
           form.email ? `Email: ${form.email}` : null,
           form.moveIn ? `Move-in: ${form.moveIn}` : null,
+          `Booking fee: GH₵${BOOKING_FEE_GHS} PAID (ref: ${paymentReference})`,
           `Message: ${form.message}`,
         ].filter(Boolean).join("\n");
         const autoWaLink = `https://wa.me/${ownerWhatsappDigits}?text=${encodeURIComponent(summary)}`;
@@ -650,8 +644,40 @@ function ContactModal({ listing, roomType, onClose }) {
       if (waTab) waTab.close();
       setSendError(err.message);
     } finally {
-      setSending(false);
+      setBusy(false);
     }
+  };
+
+  const payAndSend = () => {
+    if (!form.name) { setSendError("Enter your name so the property manager knows who's asking."); return; }
+    if (!form.email) { setSendError("Enter your email — Paystack needs it for the payment receipt."); return; }
+    if (!ownerWhatsappDigits) { setSendError("This owner hasn't added a WhatsApp number yet — try Email instead."); return; }
+    setSendError("");
+    if (!PAYSTACK_PUBLIC_KEY) {
+      setSendError("Payments aren't configured yet — set VITE_PAYSTACK_PUBLIC_KEY.");
+      return;
+    }
+    if (!window.PaystackPop) {
+      setSendError("Couldn't load the payment window. Check your connection and try again.");
+      return;
+    }
+    setBusy(true);
+    const reference = `bookinn_fee_${listing.id}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
+    const handler = window.PaystackPop.setup({
+      key: PAYSTACK_PUBLIC_KEY,
+      email: form.email,
+      amount: BOOKING_FEE_GHS * 100,
+      currency: "GHS",
+      ref: reference,
+      metadata: { listingId: listing.id, roomType, purpose: "booking_fee" },
+      callback: (response) => {
+        api.verifyBookingPayment(response.reference)
+          .then(() => submitBookingRequest(response.reference))
+          .catch((err) => { setSendError(err.message); setBusy(false); });
+      },
+      onClose: () => setBusy(false),
+    });
+    handler.openIframe();
   };
 
   return (
@@ -665,33 +691,22 @@ function ContactModal({ listing, roomType, onClose }) {
           <div style={{ background: C.blueLight }} className="rounded-md p-4 text-center">
             <Check className="mx-auto mb-2" color={C.navy} />
             <p style={{ color: C.navy }} className="font-semibold text-sm">
-              {ownerWhatsappDigits
-                ? "Inquiry sent — we've also opened WhatsApp with your details ready to send to the owner."
-                : "Inquiry sent. The property manager typically replies within a day."}
+              Booking fee paid and inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
             </p>
           </div>
         ) : (
           <>
-            {(waLink || mailLink) && (
+            {mailLink && (
               <div className="flex gap-2 mb-4">
-                {waLink && (
-                  <a href={waLink} target="_blank" rel="noreferrer" style={{ background: "#25D366" }} className="flex-1 text-white text-sm font-semibold py-2.5 rounded-md flex items-center justify-center gap-1.5">
-                    <MessageCircle size={16} /> WhatsApp now
-                  </a>
-                )}
-                {mailLink && (
-                  <a href={mailLink} style={{ borderColor: C.border, color: C.navy }} className="flex-1 border text-sm font-semibold py-2.5 rounded-md flex items-center justify-center gap-1.5">
-                    <Mail size={16} /> Email
-                  </a>
-                )}
+                <a href={mailLink} style={{ borderColor: C.border, color: C.navy }} className="flex-1 border text-sm font-semibold py-2.5 rounded-md flex items-center justify-center gap-1.5">
+                  <Mail size={16} /> Email instead
+                </a>
               </div>
             )}
 
             <div style={{ borderColor: C.border }} className="border-t pt-4">
               <p style={{ color: C.gray600 }} className="text-xs mb-3">
-                {ownerWhatsappDigits
-                  ? "Or fill this in — it's saved on BookInn and sent straight to the owner's WhatsApp automatically."
-                  : "Or send a booking request through BookInn"}
+                Pay the GH₵{BOOKING_FEE_GHS} booking fee to send your request — it's sent straight to the owner's WhatsApp automatically once confirmed.
               </p>
               <div className="flex flex-col gap-2.5">
                 <input placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -704,11 +719,19 @@ function ContactModal({ listing, roomType, onClose }) {
                   style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none" />
                 <textarea rows={3} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
                   style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none resize-none" />
+
+                <div style={{ background: C.blueMist, borderColor: C.border }} className="border rounded-md p-3">
+                  <p style={{ color: C.ink }} className="text-xs font-semibold mb-0.5 flex items-center gap-1.5">
+                    <ShieldCheck size={13} color={C.blue} /> Secure payment via Paystack
+                  </p>
+                  <p style={{ color: C.gray600 }} className="text-xs">You'll pay GH₵{BOOKING_FEE_GHS} in a secure Paystack window. Your card details never touch BookInn's servers, and WhatsApp only opens once payment is verified.</p>
+                </div>
+
                 {sendError && (
                   <p style={{ color: "#b3261e" }} className="text-xs">{sendError}</p>
                 )}
-                <PrimaryButton full onClick={sendBookingRequest} disabled={sending}>
-                  {sending ? "Sending…" : "Send booking request"}
+                <PrimaryButton full onClick={payAndSend} disabled={busy}>
+                  {busy ? "Processing…" : `Pay GH₵${BOOKING_FEE_GHS} & continue to WhatsApp`}
                 </PrimaryButton>
               </div>
             </div>
