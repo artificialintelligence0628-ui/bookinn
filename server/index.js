@@ -214,6 +214,41 @@ app.post("/api/payments/verify", requireAuth, ah(async (req, res) => {
     res.status(502).json({ error: "Payment verification failed. Please try again." });
   }
 }));
+// Booking fee verification — every student pays a flat GH₵5 fee via Paystack
+// before their request reaches the owner's WhatsApp. Public endpoint (students
+// aren't logged in). The amount is a fixed constant here, never trusted from
+// the client, so it can't be tampered with from the browser.
+const BOOKING_FEE_GHS = 5;
+
+app.post("/api/bookings/verify-payment", ah(async (req, res) => {
+  const { reference } = req.body || {};
+  if (!reference) {
+    return res.status(400).json({ error: "A payment reference is required." });
+  }
+  if (!PAYSTACK_SECRET_KEY) {
+    return res.status(500).json({ error: "Payments aren't configured on the server yet — set PAYSTACK_SECRET_KEY." });
+  }
+  try {
+    const psRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
+      headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
+    });
+    const psData = await psRes.json();
+    if (!psRes.ok || !psData.status) {
+      return res.status(402).json({ error: psData?.message || "Could not verify this payment with Paystack." });
+    }
+    const tx = psData.data;
+    if (tx.status !== "success") {
+      return res.status(402).json({ error: "That payment was not successful." });
+    }
+    if (tx.currency !== "GHS" || tx.amount !== BOOKING_FEE_GHS * 100) {
+      return res.status(402).json({ error: "The paid amount didn't match the booking fee." });
+    }
+    res.json({ verified: true, reference: tx.reference });
+  } catch (err) {
+    console.error("Booking payment verification error:", err);
+    res.status(502).json({ error: "Payment verification failed. Please try again." });
+  }
+}));
 
 // Starts the one-time 30-day free trial. This is a deliberate, explicit action —
 // the owner clicks "Start Free Trial" themselves; the trial is never granted as
