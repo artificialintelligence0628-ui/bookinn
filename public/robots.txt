@@ -5,4 +5,4 @@ User-agent: *
    Disallow: /account
    Disallow: /login
 
-   Sitemap: https://bookinn-19g2.onrender.com/sitemap.xml
+   Sitemap: bookinngh.com
