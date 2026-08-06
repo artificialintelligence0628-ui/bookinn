@@ -28,7 +28,7 @@ export const PLAN_FEATURES = {
     maxListings: 1,
     maxPhotos: 3,
     videoTour: false,
-    whatsappEnquiries: false,
+    whatsappEnquiries: true,
     analytics: false,
     verifiedBadge: false,
     higherSearchRanking: false,
