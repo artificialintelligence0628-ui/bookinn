@@ -39,6 +39,8 @@ export const api = {
 
   sendInquiry: (payload) => request("/inquiries", { method: "POST", body: payload }),
   getInquiries: (token) => request("/inquiries", { token }),
+  verifyBookingPayment: (reference) =>
+  request("/bookings/verify-payment", { method: "POST", body: { reference } }),
   getOwnerStats: (token) => request("/owner/stats", { token }),
 
   getMyListings: (token) => request("/listings/mine", { token }),
