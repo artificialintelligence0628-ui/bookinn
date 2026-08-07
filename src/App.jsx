@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { api } from "./api.js";
 import {
   Search, MapPin, Star, Wifi, Droplet, Zap, UtensilsCrossed, ShieldCheck,
@@ -340,6 +340,64 @@ function Hero({ searchQuery, setSearchQuery }) {
 /* ---------------------------------------------------------
    FILTER SIDEBAR
 --------------------------------------------------------- */
+/* ---------------------------------------------------------
+   MULTI-SELECT DROPDOWN — collapsed by default, opens like the
+   "Sort: Recommended" select, checkboxes live inside the panel
+--------------------------------------------------------- */
+function MultiSelectDropdown({ label, options, selected, onToggle }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    const handleClickOutside = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const summary = selected.length === 0 ? label : `${label} (${selected.length})`;
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        style={{ borderColor: C.border, color: C.ink }}
+        className="w-full border rounded-md text-sm px-3 py-2 bg-white flex items-center justify-between"
+      >
+        <span>{summary}</span>
+        <ChevronDown size={16} color={C.gray600} />
+      </button>
+      {open && (
+        <div
+          style={{ borderColor: C.border }}
+          className="absolute z-10 mt-1 w-full border rounded-md bg-white shadow-lg p-2 flex flex-col gap-1 max-h-60 overflow-y-auto"
+        >
+          {options.map((opt) => (
+            <label
+              key={opt}
+              className="flex items-center gap-2 text-sm cursor-pointer px-2 py-1.5 rounded hover:bg-gray-50"
+              style={{ color: C.gray600 }}
+            >
+              <input
+                type="checkbox"
+                checked={selected.includes(opt)}
+                onChange={() => onToggle(opt)}
+                style={{ accentColor: C.blue }}
+              />
+              {opt}
+            </label>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   FILTER SIDEBAR
+--------------------------------------------------------- */
 function FilterSidebar({ filters, setFilters, resultCount }) {
   const toggleRoomType = (rt) => {
     setFilters((f) => ({
@@ -378,27 +436,38 @@ function FilterSidebar({ filters, setFilters, resultCount }) {
       </div>
 
       <div className="mb-5">
-        <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Property type</p>
-        <div className="flex flex-col gap-2">
-          {propertyTypes.map((pt) => (
-            <label key={pt} className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: C.gray600 }}>
-              <input type="checkbox" checked={filters.propertyTypes.includes(pt)} onChange={() => togglePropertyType(pt)} style={{ accentColor: C.blue }} />
-              {pt}
-            </label>
-          ))}
-        </div>
+       
+      <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Property type</p>
+        <MultiSelectDropdown
+          label="Any property type"
+          options={propertyTypes}
+          selected={filters.propertyTypes}
+          onToggle={togglePropertyType}
+        />
       </div>
 
       <div className="mb-5">
         <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Room type</p>
-        <div className="flex flex-col gap-2">
-          {roomTypes.map((rt) => (
-            <label key={rt} className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: C.gray600 }}>
-              <input type="checkbox" checked={filters.roomTypes.includes(rt)} onChange={() => toggleRoomType(rt)} style={{ accentColor: C.blue }} />
-              {rt}
-            </label>
+        <MultiSelectDropdown
+          label="Any room type"
+          options={roomTypes}
+          selected={filters.roomTypes}
+          onToggle={toggleRoomType}
+        />
+      </div>
+
+      <div className="mb-5">
+        <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Bathroom</p>
+        <select
+          value={filters.bath}
+          onChange={(e) => setFilters((f) => ({ ...f, bath: e.target.value }))}
+          style={{ borderColor: C.border, color: C.ink }}
+          className="w-full border rounded-md text-sm px-3 py-2 bg-white"
+        >
+          {["Any", "Ensuite bath", "Shared bath"].map((b) => (
+            <option key={b} value={b}>{b}</option>
           ))}
-        </div>
+        </select>
       </div>
 
       <div className="mb-5">
