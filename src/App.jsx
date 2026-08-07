@@ -469,19 +469,7 @@ function FilterSidebar({ filters, setFilters, resultCount }) {
           ))}
         </select>
       </div>
-
-      <div className="mb-5">
-        <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Bathroom</p>
-        <div className="flex flex-col gap-2">
-          {["Any", "Ensuite bath", "Shared bath"].map((b) => (
-            <label key={b} className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: C.gray600 }}>
-              <input type="radio" name="bath" checked={filters.bath === b} onChange={() => setFilters((f) => ({ ...f, bath: b }))} style={{ accentColor: C.blue }} />
-              {b}
-            </label>
-          ))}
-        </div>
-      </div>
-
+      
       <div className="mb-2">
         <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: C.gray600 }}>
           <input type="checkbox" checked={filters.kitchen} onChange={(e) => setFilters((f) => ({ ...f, kitchen: e.target.checked }))} style={{ accentColor: C.blue }} />
