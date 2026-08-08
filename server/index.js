@@ -3,11 +3,13 @@ import express from "express";
 import cors from "cors";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
 import { store } from "./store.js";
 import { migrate } from "./db.js";
 import { PLAN_PRICES, PLAN_FEATURES, PLAN_ORDER, maxListingsForView, computeSubscriptionView, reminderForView } from "./plans.js";
+import { uploadBuffer, cloudinaryConfigured } from "./cloudinary.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
