@@ -3284,10 +3284,7 @@ export default function App() {
     refreshPublicListings();
   };
 
-  const goToAdmin = () => {
-    if (user) { setView("admin"); }
-    else { setAuthRedirect("admin"); setView("login"); }
-  };
+ const goToAdmin = () => { setPendingTier(null); if (user) { setView("admin"); } else { setAuthRedirect("admin"); setView("login"); } };
 
   // "List your property" drops any signed-in Owner straight into their dashboard,
   // where they can start their free trial themselves — no need to detour through pricing first.
