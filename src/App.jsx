@@ -119,7 +119,7 @@ const PRICING_TIERS = [
     features: ["Up to 2 hostel/apartment listings", "Up to 10 photos per listing", "Video tour", "WhatsApp enquiries", "Higher search ranking", "Availability management", "Analytics", "Verified badge"],
   },
   {
-    name: "Featured", amount: 500, price: "GH₵300", period: "/500", highlight: false,
+    name: "Featured", amount: 500, price: "GH₵500", period: "/year", highlight: false,
     features: ["Up to 3 hostel/apartment listings", "Up to 20 photos", "Everything in Premium", "Top of search", "Homepage placement", "Priority enquiries", "Featured badge", "Virtual walkthrough"],
   },
 ];
@@ -1124,7 +1124,7 @@ function PricingView({ onSelectTier, onGoToDashboard }) {
         <div style={{ background: C.blueLight, borderColor: C.border }} className="border rounded-lg p-4 mb-4 flex items-start gap-3">
           <Sparkles size={18} color={C.blue} className="mt-0.5 shrink-0" />
           <p style={{ color: C.navy }} className="text-sm">
-            <span className="font-bold">Try it free for 30 days.</span> Create an Owner account and publish your listing from the dashboard — no card required. Your listing stays visible to students for the full trial; subscribe anytime to keep it active afterward.
+            <span className="font-bold">Try it free for 270 days.</span> Create an Owner account and publish your listing from the dashboard — no card required. Your listing stays visible to students for the full trial; subscribe anytime to keep it active afterward.
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
