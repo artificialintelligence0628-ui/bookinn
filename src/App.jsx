@@ -111,21 +111,21 @@ const REVIEWS_SAMPLE = [
 // server-side regardless of what's shown here.
 const PRICING_TIERS = [
   {
-    name: "Basic", amount: 50, price: "GH₵50", period: "/month", highlight: false,
+    name: "Basic", amount: 250, price: "GH₵250", period: "/year", highlight: false,
     features: ["1 hostel/apartment listing", "Up to 3 photos", "Basic listing", "Room availability", "Student enquiries", "Standard search placement"],
   },
   {
-    name: "Premium", amount: 150, price: "GH₵150", period: "/month", highlight: true,
+    name: "Premium", amount: 250, price: "GH₵350", period: "/year", highlight: true,
     features: ["Up to 2 hostel/apartment listings", "Up to 10 photos per listing", "Video tour", "WhatsApp enquiries", "Higher search ranking", "Availability management", "Analytics", "Verified badge"],
   },
   {
-    name: "Featured", amount: 300, price: "GH₵300", period: "/month", highlight: false,
+    name: "Featured", amount: 500, price: "GH₵300", period: "/500", highlight: false,
     features: ["Up to 3 hostel/apartment listings", "Up to 20 photos", "Everything in Premium", "Top of search", "Homepage placement", "Priority enquiries", "Featured badge", "Virtual walkthrough"],
   },
 ];
 
 // Mirrors server/plans.js PLAN_PRICES.
-const PLAN_PRICES_UI = { Basic: 50, Premium: 150, Featured: 300 };
+const PLAN_PRICES_UI = { Basic: 250, Premium: 350, Featured: 500 };
 
 // Mirrors server/plans.js PLAN_FEATURES — used only to drive UI (locked-feature
 // hints, photo-limit copy). The backend independently re-derives and enforces
@@ -1655,7 +1655,7 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
               <BadgeCheck size={20} color={C.green} className="mt-0.5 shrink-0" />
               <div>
                 <p style={{ color: C.navy }} className="text-sm font-extrabold">{view.plan?.toUpperCase()} PLAN</p>
-                <p style={{ color: C.gray600 }} className="text-xs mt-0.5">GH₵{PLAN_PRICES_UI[view.plan]}/month · Your subscription is active.</p>
+                <p style={{ color: C.gray600 }} className="text-xs mt-0.5">GH₵{PLAN_PRICES_UI[view.plan]}/year · Your subscription is active.</p>
                 {view.nextBillingDate && <p style={{ color: C.gray400 }} className="text-xs mt-0.5">Next billing: {new Date(view.nextBillingDate).toLocaleDateString()}</p>}
               </div>
             </div>
