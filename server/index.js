@@ -25,7 +25,9 @@ const SUBSCRIPTION_AMOUNTS = PLAN_PRICES;
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "10mb" })); // generous limit — listing photos are sent as base64
+// Listing photos/video now go through the multipart /api/uploads route above and
+// straight to Cloudinary, so JSON bodies are just URLs + text — 1mb is generous.
+app.use(express.json({ limit: "1mb" }));
 
 const ROLES = ["Owner", "Student", "Parent"]; // roles the public signup form is allowed to create
 const ADMIN_ROLE = "Admin"; // never accepted from public /auth/signup — seeded below instead
@@ -143,6 +145,33 @@ const requireAdmin = ah(async (req, res, next) => {
   if (user.role !== ADMIN_ROLE) return res.status(403).json({ error: "Admin access only." });
   next();
 });
+// ---------------------------------------------------------
+// Uploads (Cloudinary)
+// ---------------------------------------------------------
+// Files arrive as multipart/form-data (not base64-in-JSON) and are held in
+// memory only long enough to stream straight to Cloudinary — never written to
+// disk and never stored in Postgres. Listings keep just the returned URL.
+// 25MB covers the walkthrough/listing video case; images are far smaller.
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 25 * 1024 * 1024 },
+});
+
+app.post("/api/uploads", requireAuth, upload.single("file"), ah(async (req, res) => {
+  if (!cloudinaryConfigured) {
+    return res.status(503).json({ error: "Image storage isn't configured on the server yet. Set the CLOUDINARY_* env vars." });
+  }
+  if (!req.file) return res.status(400).json({ error: "No file uploaded." });
+  const isImage = req.file.mimetype.startsWith("image/");
+  const isVideo = req.file.mimetype.startsWith("video/");
+  if (!isImage && !isVideo) return res.status(400).json({ error: "Only image or video files are allowed." });
+
+  const result = await uploadBuffer(req.file.buffer, {
+    folder: `bookinn/${req.user.sub}`,
+    resourceType: isVideo ? "video" : "image",
+  });
+  res.status(201).json({ url: result.secure_url, publicId: result.public_id });
+}));
 
 // ---------------------------------------------------------
 // Auth
