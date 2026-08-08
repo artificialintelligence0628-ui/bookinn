@@ -112,7 +112,7 @@ const REVIEWS_SAMPLE = [
 const PRICING_TIERS = [
   {
     name: "Basic", amount: 250, price: "GH₵250", period: "/year", highlight: false,
-    features: ["1 hostel/apartment listing", "Up to 3 photos", "Basic listing", "Room availability", "Student enquiries", "Standard search placement"],
+    features: ["1 hostel/apartment listing", "Up to 3 photos", "Basic listing", "Room availability", "Student enquiries","WhatsApp enquiries", "Standard search placement"],
   },
   {
     name: "Premium", amount: 250, price: "GH₵350", period: "/year", highlight: true,
