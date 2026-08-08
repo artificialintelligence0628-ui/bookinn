@@ -307,7 +307,7 @@ app.get("/api/subscription/me", requireAuth, ah(async (req, res) => {
 // GH₵1,200 AND "Four in a room" at GH₵800) — each with its own price. Apartments only ever
 // have a single category. This normalizes whatever the client sent into a clean array and
 // derives the headline roomType/price used for cards, search and sorting.
-function normalizeRoomOptions(type, rawOptions) {
+function normalizeRoomOptions(type, rawOptions, allowAvailability) {
   const validTypes = type === "Hostel" ? HOSTEL_ROOM_TYPES : APARTMENT_ROOM_TYPES;
   const list = Array.isArray(rawOptions) ? rawOptions : [];
   const seen = new Set();
@@ -319,7 +319,11 @@ function normalizeRoomOptions(type, rawOptions) {
     if (!price || price <= 0) continue;
     if (seen.has(roomType)) continue;
     seen.add(roomType);
-    cleaned.push({ roomType, price });
+    const entry = { roomType, price };
+    if (allowAvailability) {
+      entry.availability = AVAILABILITY_STATUSES.includes(opt?.availability) ? opt.availability : "Space available";
+    }
+    cleaned.push(entry);
   }
   if (!cleaned.length) return null;
   cleaned.sort((a, b) => a.price - b.price);
@@ -464,7 +468,7 @@ app.post("/api/listings", requireAuth, requireCanCreateListing, ah(async (req, r
   const l = req.body || {};
   const type = l.type === "Apartment" ? "Apartment" : "Hostel";
   if (!l.name) return res.status(400).json({ error: "Listing name is required." });
-  const rooms = normalizeRoomOptions(type, l.roomOptions);
+  const rooms = normalizeRoomOptions(type, l.roomOptions, req.subscriptionView.features.advancedAvailability);
   if (!rooms) {
     return res.status(400).json({
       error: type === "Hostel"
@@ -513,7 +517,7 @@ app.put("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing
   const l = req.body || {};
   const type = l.type === "Apartment" ? "Apartment" : "Hostel";
   if (!l.name) return res.status(400).json({ error: "Listing name is required." });
-  const rooms = normalizeRoomOptions(type, l.roomOptions);
+ const rooms = normalizeRoomOptions(type, l.roomOptions, req.subscriptionView.features.advancedAvailability);
   if (!rooms) {
     return res.status(400).json({
       error: type === "Hostel"
