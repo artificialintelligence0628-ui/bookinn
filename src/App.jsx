@@ -131,7 +131,7 @@ const PLAN_PRICES_UI = { Basic: 250, Premium: 350, Featured: 500 };
 // hints, photo-limit copy). The backend independently re-derives and enforces
 // every one of these from the owner's real subscription record.
 const PLAN_FEATURES = {
-  Basic: { maxListings: 1, maxPhotos: 3, videoTour: false, whatsappEnquiries: false, analytics: false, verifiedBadge: false, topSearch: false, homepagePlacement: false, priorityEnquiries: false, featuredBadge: false, virtualWalkthrough: false, maxWalkthroughStops: 0, advancedAvailability: false },
+  Basic: { maxListings: 1, maxPhotos: 3, videoTour: false, whatsappEnquiries: true, analytics: false, verifiedBadge: false, topSearch: false, homepagePlacement: false, priorityEnquiries: false, featuredBadge: false, virtualWalkthrough: false, maxWalkthroughStops: 0, advancedAvailability: false },
   Premium: { maxListings: 2, maxPhotos: 10, videoTour: true, whatsappEnquiries: true, analytics: true, verifiedBadge: true, topSearch: false, homepagePlacement: false, priorityEnquiries: false, featuredBadge: false, virtualWalkthrough: false, maxWalkthroughStops: 0, advancedAvailability: true },
   Featured: { maxListings: 3, maxPhotos: 20, videoTour: true, whatsappEnquiries: true, analytics: true, verifiedBadge: true, topSearch: true, homepagePlacement: true, priorityEnquiries: true, featuredBadge: true, virtualWalkthrough: true, maxWalkthroughStops: 6, advancedAvailability: true },
 };
