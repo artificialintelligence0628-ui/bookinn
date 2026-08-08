@@ -7,7 +7,7 @@
 
 export const PLAN_ORDER = ["Basic", "Premium", "Featured"];
 
-// GH₵ per month.
+// GH₵ per year.
 export const PLAN_PRICES = { Basic: 250, Premium: 350, Featured: 500 };
 
 export const TRIAL_DAYS = 270;
@@ -39,6 +39,7 @@ export const PLAN_FEATURES = {
     virtualWalkthrough: false,
     maxWalkthroughStops: 0,
     searchPriority: 0,
+    advancedAvailability: false,
   },
   Premium: {
     maxListings: 2,
@@ -55,6 +56,7 @@ export const PLAN_FEATURES = {
     virtualWalkthrough: false,
     maxWalkthroughStops: 0,
     searchPriority: 1,
+    advancedAvailability: true,
   },
   Featured: {
     maxListings: 3,
@@ -71,6 +73,7 @@ export const PLAN_FEATURES = {
     virtualWalkthrough: true,
     maxWalkthroughStops: 6,
     searchPriority: 2,
+    advancedAvailability: true,
   },
 };
 
