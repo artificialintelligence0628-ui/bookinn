@@ -195,7 +195,7 @@ export const store = {
   },
   async setUserSubscription(id, tier) {
     const now = new Date();
-    const nextBilling = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const nextBilling = new Date(now.getTime() + 365 * 24 * 60 * 60 * 1000);
     const user = await this.getUserById(id);
     if (!user) return null;
     const subscription = {
