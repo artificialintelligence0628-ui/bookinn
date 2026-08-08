@@ -131,9 +131,9 @@ const PLAN_PRICES_UI = { Basic: 250, Premium: 350, Featured: 500 };
 // hints, photo-limit copy). The backend independently re-derives and enforces
 // every one of these from the owner's real subscription record.
 const PLAN_FEATURES = {
-  Basic: { maxListings: 1, maxPhotos: 3, videoTour: false, whatsappEnquiries: false, analytics: false, verifiedBadge: false, topSearch: false, homepagePlacement: false, priorityEnquiries: false, featuredBadge: false, virtualWalkthrough: false, maxWalkthroughStops: 0 },
-  Premium: { maxListings: 2, maxPhotos: 10, videoTour: true, whatsappEnquiries: true, analytics: true, verifiedBadge: true, topSearch: false, homepagePlacement: false, priorityEnquiries: false, featuredBadge: false, virtualWalkthrough: false, maxWalkthroughStops: 0 },
-  Featured: { maxListings: 3, maxPhotos: 20, videoTour: true, whatsappEnquiries: true, analytics: true, verifiedBadge: true, topSearch: true, homepagePlacement: true, priorityEnquiries: true, featuredBadge: true, virtualWalkthrough: true, maxWalkthroughStops: 6 },
+  Basic: { maxListings: 1, maxPhotos: 3, videoTour: false, whatsappEnquiries: false, analytics: false, verifiedBadge: false, topSearch: false, homepagePlacement: false, priorityEnquiries: false, featuredBadge: false, virtualWalkthrough: false, maxWalkthroughStops: 0, advancedAvailability: false },
+  Premium: { maxListings: 2, maxPhotos: 10, videoTour: true, whatsappEnquiries: true, analytics: true, verifiedBadge: true, topSearch: false, homepagePlacement: false, priorityEnquiries: false, featuredBadge: false, virtualWalkthrough: false, maxWalkthroughStops: 0, advancedAvailability: true },
+  Featured: { maxListings: 3, maxPhotos: 20, videoTour: true, whatsappEnquiries: true, analytics: true, verifiedBadge: true, topSearch: true, homepagePlacement: true, priorityEnquiries: true, featuredBadge: true, virtualWalkthrough: true, maxWalkthroughStops: 6, advancedAvailability: true },
 };
 
 
@@ -1055,7 +1055,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
                 className="border rounded-md px-3 py-2 text-sm outline-none w-full"
               >
                 {roomOptions.map((r) => (
-                  <option key={r.roomType} value={r.roomType}>{r.roomType} — GH₵{r.price.toLocaleString()}</option>
+                  <option key={r.roomType} value={r.roomType}>{r.roomType} — GH₵{r.price.toLocaleString()}{r.availability ? ` (${r.availability})` : ""}</option>
                 ))}
               </select>
             </div>
@@ -1331,7 +1331,7 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
     ownerEmail: "", ownerWhatsapp: "", availability: AVAILABILITY_STATUSES[0],
     // Hostel room categories: owner ticks every occupancy their hostel actually offers
     // (e.g. both "Two in a room" and "Four in a room") and sets a price for each.
-    hostelRooms: HOSTEL_ROOM_TYPES.map((rt) => ({ roomType: rt, checked: false, price: "" })),
+    hostelRooms: HOSTEL_ROOM_TYPES.map((rt) => ({ roomType: rt, checked: false, price: "", availability: AVAILABILITY_STATUSES[0] })),
   };
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -1480,6 +1480,13 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
     }));
   };
 
+  const setHostelRoomAvailability = (roomType, availability) => {
+    setForm((f) => ({
+      ...f,
+      hostelRooms: f.hostelRooms.map((r) => (r.roomType === roomType ? { ...r, availability } : r)),
+    }));
+  };
+
   const startEdit = (listing) => {
     setEditingId(listing.id);
     // Matches both the new "1.2 km · 6 min walk to campus" format and the older "6 min walk to campus" format.
@@ -1504,7 +1511,7 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
       pricingPeriod: listing.pricingPeriod || "Per semester",
       hostelRooms: HOSTEL_ROOM_TYPES.map((rt) => {
         const match = existingRooms.find((r) => r.roomType === rt);
-        return { roomType: rt, checked: !!match, price: match ? String(match.price) : "" };
+        return { roomType: rt, checked: !!match, price: match ? String(match.price) : "", availability: match?.availability || AVAILABILITY_STATUSES[0] };
       }),
     });
     setShowForm(true);
@@ -1522,7 +1529,7 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
   const submit = async () => {
     if (!form.name) return;
     const roomOptions = form.type === "Hostel"
-      ? form.hostelRooms.filter((r) => r.checked && r.price !== "" && Number(r.price) > 0).map((r) => ({ roomType: r.roomType, price: Number(r.price) }))
+      ? form.hostelRooms.filter((r) => r.checked && r.price !== "" && Number(r.price) > 0).map((r) => ({ roomType: r.roomType, price: Number(r.price), availability: r.availability }))
       : (form.roomType && form.price && Number(form.price) > 0 ? [{ roomType: form.roomType, price: Number(form.price) }] : []);
     if (!roomOptions.length) {
       setSubmitError(
@@ -1893,6 +1900,21 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
                         onChange={(e) => setHostelRoomPrice(r.roomType, e.target.value)}
                         style={{ borderColor: C.border }} className="border rounded-md px-3 py-1.5 text-sm outline-none w-36"
                       />
+                    )}
+                    {r.checked && features.advancedAvailability && (
+                      <select
+                        value={r.availability}
+                        onChange={(e) => setHostelRoomAvailability(r.roomType, e.target.value)}
+                        style={{ borderColor: C.border, color: C.ink }}
+                        className="border rounded-md px-2 py-1.5 text-xs outline-none"
+                      >
+                        {AVAILABILITY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    )}
+                    {r.checked && !features.advancedAvailability && (
+                      <button type="button" onClick={onUpgrade} style={{ color: C.blue }} className="text-xs font-semibold hover:underline">
+                        Set per-room status →
+                      </button>
                     )}
                   </div>
                 ))}
