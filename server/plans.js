@@ -8,9 +8,9 @@
 export const PLAN_ORDER = ["Basic", "Premium", "Featured"];
 
 // GH₵ per month.
-export const PLAN_PRICES = { Basic: 50, Premium: 150, Featured: 300 };
+export const PLAN_PRICES = { Basic: 250, Premium: 350, Featured: 500 };
 
-export const TRIAL_DAYS = 30;
+export const TRIAL_DAYS = 270;
 
 // How many listings the owner's CURRENT trial/plan allows — trial runs on
 // Basic-level access (1 listing), same as an explicit Basic subscription.
