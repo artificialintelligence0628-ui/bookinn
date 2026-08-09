@@ -1070,7 +1070,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
           <PrimaryButton full onClick={() => setShowContact(true)}>
             {listing.availability === "Fully booked" ? "Ask about waitlist" : "Contact / Book room"}
           </PrimaryButton>
-          <p style={{ color: C.gray400 }} className="text-xs text-center mt-3">No payment required to send an inquiry</p>
+          <p style={{ color: C.gray400 }} className="text-xs text-center mt-3">A GH₵5 fee applies to send a booking request</p>
         </div>
       </div>
 
@@ -2449,7 +2449,7 @@ function FaqAccordion({ items }) {
 
 function HelpCenterView({ setView }) {
   const studentFaqs = [
-    { q: "Is BookInn free to use?", a: "Yes — searching listings, saving favorites, contacting owners and leaving reviews are all free for students." },
+   { q: "Is BookInn free to use?", a: "Searching listings, saving favorites and leaving reviews are all free. Sending a booking request to an owner has a small GH₵5 fee, which covers verifying your request before it's sent to their WhatsApp." },
     { q: "How do I save a listing for later?", a: "Tap the heart icon on any listing card or on the listing's detail page. Find everything you've saved under \"Saved\" in the menu." },
     { q: "How do I contact a property owner?", a: "Open a listing and use the inquiry form, or reach out directly via the WhatsApp/phone/email details shown on the listing page." },
     { q: "Do I pay rent through the app?", a: "No — BookInn connects you with owners, but rent, deposits and agreements are handled directly between you and them. See \"How booking works\" for the full picture." },
