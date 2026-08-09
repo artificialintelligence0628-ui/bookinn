@@ -1,8 +1,23 @@
 <?xml version="1.0" encoding="UTF-8"?>
-   <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
-     <url><loc>https://bookinn-19g2.onrender.com/</loc><priority>1.0</priority></url>
-     <url><loc>https://bookinn-19g2.onrender.com/pricing</loc><priority>0.6</priority></url>
-     <url><loc>https://bookinn-19g2.onrender.com/how-it-works</loc><priority>0.6</priority></url>
-     <url><loc>https://bookinn-19g2.onrender.com/help-center</loc><priority>0.5</priority></url>
-     <url><loc>https://bookinn-19g2.onrender.com/safety-tips</loc><priority>0.5</priority></url>
-   </urlset>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
+    <loc>https://bookinngh.com/</loc>
+    <priority>1.0</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/pricing</loc>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/how-it-works</loc>
+    <priority>0.6</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/help-center</loc>
+    <priority>0.5</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/safety-tips</loc>
+    <priority>0.5</priority>
+  </url>
+</urlset>
