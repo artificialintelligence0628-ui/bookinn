@@ -1515,10 +1515,11 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
     // Matches both the new "1.2 km · 6 min walk to campus" format and the older "6 min walk to campus" format.
     const distanceMatch = (listing.distance || "").match(/^(?:([\d.]+)\s*km\s*·\s*)?(\d+)\s*min\s*(walk|drive)/i);
     const existingRooms = Array.isArray(listing.roomOptions) ? listing.roomOptions : [];
-    setForm({
+   setForm({
       name: listing.name, university: listing.university, price: String(listing.price),
       type: listing.type, roomType: existingRooms[0]?.roomType || listing.roomType, bath: listing.bath,
       kitchen: !!listing.kitchen, featured: !!listing.featured, amenities: listing.amenities || [],
+      uploadingImage: false, uploadingGallery: false, uploadingVideo: false, uploadingWalkthrough: {},
       // An actual uploaded photo is a Cloudinary URL (or, for older listings
       // saved before this upload flow existed, a raw base64 data URI) — a bare
       // placeholder key like "hostel1" means no photo was ever uploaded.
