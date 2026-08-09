@@ -1321,12 +1321,12 @@ function SubscribeView({ user, token, initialTier, onSubscribed, setView }) {
   );
 }
 
-function AdminView({ user, listings, maxListings, ownerStats, statsLoading, ownerInquiries, inquiriesLoading, mySubscription, subLoading, reminder, addListing, updateListing, deleteListing, onCancelSubscription, onStartTrial, onUpgrade }) {
+function AdminView({ user, token, listings, maxListings, ownerStats, statsLoading, ownerInquiries, inquiriesLoading, mySubscription, subLoading, reminder, addListing, updateListing, deleteListing, onCancelSubscription, onStartTrial, onUpgrade }) {
   const emptyForm = {
     name: "", university: UNIVERSITIES[0], price: "",
     type: "Hostel", roomType: HOSTEL_ROOM_TYPES[0], bath: "Shared bath",
     kitchen: false, featured: false, amenities: [], imageData: "", galleryData: [], videoData: "",
-    walkthrough: [],
+    walkthrough: [], uploadingImage: false, uploadingGallery: false, uploadingVideo: false, uploadingWalkthrough: {},
     desc: "", locationDescription: "", travelKm: "", travelMinutes: "", travelMode: "walk", pricingPeriod: "Per semester",
     ownerEmail: "", ownerWhatsapp: "", availability: AVAILABILITY_STATUSES[0],
     // Hostel room categories: owner ticks every occupancy their hostel actually offers
@@ -1379,45 +1379,56 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
     { label: "Est. revenue (GH₵)", value: statsLoading ? "…" : (ownerStats?.estimatedRevenueGHS ?? 0).toLocaleString(), icon: TrendingUp },
   ];
 
-  const handleImageUpload = (e) => {
+  // Photos/video upload straight to Cloudinary via the server's multipart
+  // /api/uploads route (see server/index.js + server/cloudinary.js) and only
+  // the returned URL is kept in form state — never the raw file data.
+  const handleImageUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => setForm((f) => ({ ...f, imageData: reader.result }));
-    reader.readAsDataURL(file);
+    setSubmitError("");
+    setForm((f) => ({ ...f, uploadingImage: true }));
+    try {
+      const { url } = await api.uploadFile(file, token);
+      setForm((f) => ({ ...f, imageData: url, uploadingImage: false }));
+    } catch (err) {
+      setSubmitError(err.message || "Photo upload failed — please try again.");
+      setForm((f) => ({ ...f, uploadingImage: false }));
+    }
   };
 
-  const handleGalleryUpload = (e) => {
+  const handleGalleryUpload = async (e) => {
     const files = Array.from(e.target.files || []).filter((f) => f.type.startsWith("image/"));
     if (!files.length) return;
-    setForm((f) => {
-      const cap = galleryCap;
-      const room = Math.max(0, cap - f.galleryData.length);
-      const toAdd = files.slice(0, room);
-      if (files.length > toAdd.length) {
-        const nextPlan = view?.effectivePlan === "Basic" ? "Premium" : "Featured";
-        setSubmitError(`You've reached the ${cap}-photo limit on the ${view?.effectivePlan || "Basic"} plan. Upgrade to ${nextPlan} for up to ${PLAN_FEATURES[nextPlan].maxPhotos} photos.`);
-      } else {
-        setSubmitError("");
-      }
-      if (!toAdd.length) return f;
-      toAdd.forEach((file) => {
-        const reader = new FileReader();
-        reader.onload = () => {
-          setForm((f2) => ({ ...f2, galleryData: [...f2.galleryData, reader.result].slice(0, cap) }));
-        };
-        reader.readAsDataURL(file);
-      });
-      return f;
-    });
+    const cap = galleryCap;
+    const room = Math.max(0, cap - form.galleryData.length);
+    const toAdd = files.slice(0, room);
+    if (files.length > toAdd.length) {
+      const nextPlan = view?.effectivePlan === "Basic" ? "Premium" : "Featured";
+      setSubmitError(`You've reached the ${cap}-photo limit on the ${view?.effectivePlan || "Basic"} plan. Upgrade to ${nextPlan} for up to ${PLAN_FEATURES[nextPlan].maxPhotos} photos.`);
+    } else {
+      setSubmitError("");
+    }
+    if (!toAdd.length) return;
+    setForm((f) => ({ ...f, uploadingGallery: true }));
+    try {
+      const uploaded = await Promise.all(toAdd.map((file) => api.uploadFile(file, token)));
+      setForm((f) => ({
+        ...f,
+        galleryData: [...f.galleryData, ...uploaded.map((u) => u.url)].slice(0, cap),
+        uploadingGallery: false,
+      }));
+    } catch (err) {
+      setSubmitError(err.message || "Photo upload failed — please try again.");
+      setForm((f) => ({ ...f, uploadingGallery: false }));
+    }
   };
 
   const removeGalleryImage = (idx) => {
     setForm((f) => ({ ...f, galleryData: f.galleryData.filter((_, i) => i !== idx) }));
   };
 
-  const handleVideoUpload = (e) => {
+  const handleVideoUpload = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("video/")) return;
@@ -1426,9 +1437,14 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
       return;
     }
     setSubmitError("");
-    const reader = new FileReader();
-    reader.onload = () => setForm((f) => ({ ...f, videoData: reader.result }));
-    reader.readAsDataURL(file);
+    setForm((f) => ({ ...f, uploadingVideo: true }));
+    try {
+      const { url } = await api.uploadFile(file, token);
+      setForm((f) => ({ ...f, videoData: url, uploadingVideo: false }));
+    } catch (err) {
+      setSubmitError(err.message || "Video upload failed — please try again.");
+      setForm((f) => ({ ...f, uploadingVideo: false }));
+    }
   };
 
   // Virtual walkthrough (Featured plan only): an ordered set of labeled room
@@ -1447,16 +1463,23 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
     setForm((f) => ({ ...f, walkthrough: f.walkthrough.map((s, i) => (i === idx ? { ...s, label } : s)) }));
   };
 
-  const handleWalkthroughImageUpload = (idx, e) => {
+  const handleWalkthroughImageUpload = async (idx, e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (!file.type.startsWith("image/")) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result;
-      setForm((f) => ({ ...f, walkthrough: f.walkthrough.map((s, i) => (i === idx ? { ...s, image: dataUrl } : s)) }));
-    };
-    reader.readAsDataURL(file);
+    setSubmitError("");
+    setForm((f) => ({ ...f, uploadingWalkthrough: { ...f.uploadingWalkthrough, [idx]: true } }));
+    try {
+      const { url } = await api.uploadFile(file, token);
+      setForm((f) => ({
+        ...f,
+        walkthrough: f.walkthrough.map((s, i) => (i === idx ? { ...s, image: url } : s)),
+        uploadingWalkthrough: { ...f.uploadingWalkthrough, [idx]: false },
+      }));
+    } catch (err) {
+      setSubmitError(err.message || "Photo upload failed — please try again.");
+      setForm((f) => ({ ...f, uploadingWalkthrough: { ...f.uploadingWalkthrough, [idx]: false } }));
+    }
   };
 
   const toggleAmenity = (a) => {
@@ -1496,7 +1519,10 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
       name: listing.name, university: listing.university, price: String(listing.price),
       type: listing.type, roomType: existingRooms[0]?.roomType || listing.roomType, bath: listing.bath,
       kitchen: !!listing.kitchen, featured: !!listing.featured, amenities: listing.amenities || [],
-      imageData: listing.image && listing.image.startsWith("data:") ? listing.image : "",
+      // An actual uploaded photo is a Cloudinary URL (or, for older listings
+      // saved before this upload flow existed, a raw base64 data URI) — a bare
+      // placeholder key like "hostel1" means no photo was ever uploaded.
+      imageData: listing.image && (listing.image.startsWith("http") || listing.image.startsWith("data:")) ? listing.image : "",
       galleryData: listing.images || [],
       videoData: listing.video || "",
       walkthrough: Array.isArray(listing.walkthrough) ? listing.walkthrough.map((s) => ({ label: s.label || "", image: s.image || "" })) : [],
@@ -1526,8 +1552,15 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
     setSubmitError("");
   };
 
+  const stillUploading = form.uploadingImage || form.uploadingGallery || form.uploadingVideo
+    || Object.values(form.uploadingWalkthrough).some(Boolean);
+
   const submit = async () => {
     if (!form.name) return;
+    if (stillUploading) {
+      setSubmitError("Please wait for photo/video uploads to finish before saving.");
+      return;
+    }
     const roomOptions = form.type === "Hostel"
       ? form.hostelRooms.filter((r) => r.checked && r.price !== "" && Number(r.price) > 0).map((r) => ({ roomType: r.roomType, price: Number(r.price), availability: r.availability }))
       : (form.roomType && form.price && Number(form.price) > 0 ? [{ roomType: form.roomType, price: Number(form.price) }] : []);
@@ -1974,8 +2007,8 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
               <div className="flex items-center gap-3 flex-wrap">
                 <label style={{ borderColor: C.border, color: C.gray600 }} className="border border-dashed rounded-md px-4 py-3 text-sm cursor-pointer flex items-center gap-2 hover:bg-gray-50">
                   <ImagePlus size={16} color={C.blue} />
-                  {form.imageData ? "Change photo" : "Upload photo"}
-                  <input type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
+                  {form.uploadingImage ? "Uploading…" : form.imageData ? "Change photo" : "Upload photo"}
+                  <input type="file" accept="image/*" onChange={handleImageUpload} disabled={form.uploadingImage} className="hidden" />
                 </label>
                 {form.imageData && (
                   <div className="relative">
@@ -2013,8 +2046,8 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
                 {form.galleryData.length < galleryCap && (
                   <label style={{ borderColor: C.border, color: C.gray600 }} className="border border-dashed rounded-md px-4 py-3 text-sm cursor-pointer flex items-center gap-2 hover:bg-gray-50">
                     <ImagePlus size={16} color={C.blue} />
-                    Add photos
-                    <input type="file" accept="image/*" multiple onChange={handleGalleryUpload} className="hidden" />
+                    {form.uploadingGallery ? "Uploading…" : "Add photos"}
+                    <input type="file" accept="image/*" multiple onChange={handleGalleryUpload} disabled={form.uploadingGallery} className="hidden" />
                   </label>
                 )}
               </div>
@@ -2032,8 +2065,8 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
                 <div className="flex items-center gap-3 flex-wrap">
                   <label style={{ borderColor: C.border, color: C.gray600 }} className="border border-dashed rounded-md px-4 py-3 text-sm cursor-pointer flex items-center gap-2 hover:bg-gray-50">
                     <PlayCircle size={16} color={C.blue} />
-                    {form.videoData ? "Change video" : "Upload video"}
-                    <input type="file" accept="video/*" onChange={handleVideoUpload} className="hidden" />
+                    {form.uploadingVideo ? "Uploading…" : form.videoData ? "Change video" : "Upload video"}
+                    <input type="file" accept="video/*" onChange={handleVideoUpload} disabled={form.uploadingVideo} className="hidden" />
                   </label>
                   {form.videoData && (
                     <button
@@ -2066,13 +2099,15 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
                 <div className="flex flex-col gap-3">
                   {form.walkthrough.map((stop, idx) => (
                     <div key={idx} style={{ borderColor: C.border }} className="border rounded-md p-3 flex items-center gap-3 flex-wrap">
-                      <label className="shrink-0 w-16 h-16 rounded-md overflow-hidden border cursor-pointer flex items-center justify-center" style={{ borderColor: C.border, background: "#fafbfc" }}>
-                        {stop.image ? (
+                      <label className="shrink-0 w-16 h-16 rounded-md overflow-hidden border cursor-pointer flex items-center justify-center text-[10px] text-center" style={{ borderColor: C.border, background: "#fafbfc", color: C.gray600 }}>
+                        {form.uploadingWalkthrough[idx] ? (
+                          "Uploading…"
+                        ) : stop.image ? (
                           <img src={stop.image} className="w-full h-full object-cover" alt={stop.label || `Stop ${idx + 1}`} />
                         ) : (
                           <ImagePlus size={18} color={C.gray400} />
                         )}
-                        <input type="file" accept="image/*" onChange={(e) => handleWalkthroughImageUpload(idx, e)} className="hidden" />
+                        <input type="file" accept="image/*" onChange={(e) => handleWalkthroughImageUpload(idx, e)} disabled={!!form.uploadingWalkthrough[idx]} className="hidden" />
                       </label>
                       <input
                         type="text"
@@ -2120,8 +2155,8 @@ function AdminView({ user, listings, maxListings, ownerStats, statsLoading, owne
             </div>
           )}
           <div className="flex gap-2">
-            <PrimaryButton onClick={submit} disabled={submitting}>
-              {submitting ? "Saving…" : editingId ? "Update listing" : "Save listing"}
+            <PrimaryButton onClick={submit} disabled={submitting || stillUploading}>
+              {submitting ? "Saving…" : stillUploading ? "Uploading…" : editingId ? "Update listing" : "Save listing"}
             </PrimaryButton>
             <GhostButton onClick={cancelForm}>Cancel</GhostButton>
           </div>
@@ -3396,6 +3431,7 @@ export default function App() {
           ) : (
             <AdminView
               user={user}
+              token={token}
               listings={myListings}
               maxListings={myMaxListings}
               ownerStats={ownerStats}
