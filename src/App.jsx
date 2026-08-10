@@ -2371,7 +2371,7 @@ function HowBookingWorksView({ setView }) {
 
   const faqs = [
     { q: "Do I pay rent through BookInn?", a: "No. BookInn helps you discover and contact hostels and apartments near your campus — rent is paid directly to the property owner, not through the app." },
-    { q: "Is browsing and contacting owners free?", a: "Yes, it's completely free for students. There's no charge to search listings, save favorites or send an inquiry." },
+    { q: "Is browsing and contacting owners free?", a: "Searching listings, saving favorites and leaving reviews are all free. Sending a booking request to an owner has a small GH₵5 fee, which covers verifying your request before it's sent to their WhatsApp." },
     { q: "Can I book instantly through the app?", a: "Not yet — think of BookInn as a directory that connects you to owners. All viewing, agreement and payment details are handled directly with them." },
     { q: "What if a listing is no longer available?", a: "Message the owner to confirm availability before making any plans to visit or pay — listings can fill up quickly, especially near the start of a semester." },
   ];
