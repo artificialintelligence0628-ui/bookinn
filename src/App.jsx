@@ -137,7 +137,20 @@ const PLAN_FEATURES = {
 };
 
 
-const img = (key) => PROPERTY_IMAGES[key] || key || PROPERTY_IMAGES.hostel1;
+// Cloudinary URLs support on-the-fly resizing/compression via URL params —
+// inserting w_{width},q_auto,f_auto right after /upload/ tells Cloudinary to
+// serve a smaller, auto-compressed, auto-format (WebP/AVIF where supported)
+// version instead of the original upload. Local asset imports and bare
+// placeholder keys (e.g. "hostel1") pass through untouched.
+const cld = (url, width) => {
+  if (!url || typeof url !== "string" || !url.includes("res.cloudinary.com") || !width) return url;
+  return url.replace("/upload/", `/upload/w_${width},q_auto,f_auto/`);
+};
+
+const img = (key, width) => {
+  const resolved = PROPERTY_IMAGES[key] || key || PROPERTY_IMAGES.hostel1;
+  return cld(resolved, width);
+};
 
 function ScoreBadge({ score, size = "md" }) {
   const label = score >= 9 ? "Exceptional" : score >= 8.5 ? "Excellent" : score >= 7.5 ? "Very good" : "Good";
@@ -491,7 +504,7 @@ function ListingCard({ listing, isFav, toggleFav, onOpen }) {
   return (
     <div style={{ borderColor: C.border }} className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition flex flex-col sm:flex-row">
       <div className="relative sm:w-56 shrink-0">
-        <img src={img(listing.image)} alt={listing.name} className="w-full h-44 sm:h-full object-cover" />
+        <img src={img(listing.image, 500)} alt={listing.name} className="w-full h-44 sm:h-full object-cover" />
         {(listing.featured || listing.verified) && (
           <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
             {listing.featured && <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Featured</span></Badge>}
@@ -896,7 +909,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
 
       {/* Gallery */}
       <div className="h-52 sm:h-64 md:h-80 mb-3 rounded-lg overflow-hidden">
-        <img src={img(galleryImages[activeImg])} className="object-cover w-full h-full" alt={listing.name} />
+        <img src={img(galleryImages[activeImg], 900)} className="object-cover w-full h-full" alt={listing.name} />
       </div>
       {galleryImages.length > 1 ? (
         <div className="flex gap-2 mb-6 overflow-x-auto">
@@ -907,7 +920,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
               style={{ borderColor: i === activeImg ? C.blue : "transparent" }}
               className="shrink-0 rounded-md overflow-hidden border-2"
             >
-              <img src={img(src)} className="w-16 h-16 sm:w-20 sm:h-20 object-cover" alt={`${listing.name} view ${i + 1}`} />
+              <img src={img(src, 150)} className="w-16 h-16 sm:w-20 sm:h-20 object-cover" alt={`${listing.name} view ${i + 1}`} />
             </button>
           ))}
         </div>
@@ -1070,7 +1083,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
           <PrimaryButton full onClick={() => setShowContact(true)}>
             {listing.availability === "Fully booked" ? "Ask about waitlist" : "Contact / Book room"}
           </PrimaryButton>
-          <p style={{ color: C.gray400 }} className="text-xs text-center mt-3">A GH₵5 fee applies to send a booking request</p>
+          <p style={{ color: C.gray400 }} className="text-xs text-center mt-3">No payment required to send an inquiry</p>
         </div>
       </div>
 
@@ -1515,11 +1528,10 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
     // Matches both the new "1.2 km · 6 min walk to campus" format and the older "6 min walk to campus" format.
     const distanceMatch = (listing.distance || "").match(/^(?:([\d.]+)\s*km\s*·\s*)?(\d+)\s*min\s*(walk|drive)/i);
     const existingRooms = Array.isArray(listing.roomOptions) ? listing.roomOptions : [];
-   setForm({
+    setForm({
       name: listing.name, university: listing.university, price: String(listing.price),
       type: listing.type, roomType: existingRooms[0]?.roomType || listing.roomType, bath: listing.bath,
       kitchen: !!listing.kitchen, featured: !!listing.featured, amenities: listing.amenities || [],
-      uploadingImage: false, uploadingGallery: false, uploadingVideo: false, uploadingWalkthrough: {},
       // An actual uploaded photo is a Cloudinary URL (or, for older listings
       // saved before this upload flow existed, a raw base64 data URI) — a bare
       // placeholder key like "hostel1" means no photo was ever uploaded.
@@ -2181,7 +2193,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                 <tr key={l.id} style={{ borderColor: C.border }} className="border-t">
                   <td className="py-2.5 px-4 font-semibold truncate" style={{ color: C.ink }}>
                     <div className="flex items-center gap-2.5">
-                      <img src={img(l.image)} alt={l.name} className="w-9 h-9 rounded object-cover flex-shrink-0" />
+                      <img src={img(l.image, 100)} alt={l.name} className="w-9 h-9 rounded object-cover flex-shrink-0" />
                       <span className="truncate">{l.name}</span>
                     </div>
                   </td>
@@ -2371,7 +2383,7 @@ function HowBookingWorksView({ setView }) {
 
   const faqs = [
     { q: "Do I pay rent through BookInn?", a: "No. BookInn helps you discover and contact hostels and apartments near your campus — rent is paid directly to the property owner, not through the app." },
-    { q: "Is browsing and contacting owners free?", a: "Searching listings, saving favorites and leaving reviews are all free. Sending a booking request to an owner has a small GH₵5 fee, which covers verifying your request before it's sent to their WhatsApp." },
+    { q: "Is browsing and contacting owners free?", a: "Yes, it's completely free for students. There's no charge to search listings, save favorites or send an inquiry." },
     { q: "Can I book instantly through the app?", a: "Not yet — think of BookInn as a directory that connects you to owners. All viewing, agreement and payment details are handled directly with them." },
     { q: "What if a listing is no longer available?", a: "Message the owner to confirm availability before making any plans to visit or pay — listings can fill up quickly, especially near the start of a semester." },
   ];
@@ -2449,7 +2461,7 @@ function FaqAccordion({ items }) {
 
 function HelpCenterView({ setView }) {
   const studentFaqs = [
-   { q: "Is BookInn free to use?", a: "Searching listings, saving favorites and leaving reviews are all free. Sending a booking request to an owner has a small GH₵5 fee, which covers verifying your request before it's sent to their WhatsApp." },
+    { q: "Is BookInn free to use?", a: "Yes — searching listings, saving favorites, contacting owners and leaving reviews are all free for students." },
     { q: "How do I save a listing for later?", a: "Tap the heart icon on any listing card or on the listing's detail page. Find everything you've saved under \"Saved\" in the menu." },
     { q: "How do I contact a property owner?", a: "Open a listing and use the inquiry form, or reach out directly via the WhatsApp/phone/email details shown on the listing page." },
     { q: "Do I pay rent through the app?", a: "No — BookInn connects you with owners, but rent, deposits and agreements are handled directly between you and them. See \"How booking works\" for the full picture." },
