@@ -504,7 +504,7 @@ function ListingCard({ listing, isFav, toggleFav, onOpen }) {
   return (
     <div style={{ borderColor: C.border }} className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition flex flex-col sm:flex-row">
       <div className="relative sm:w-56 shrink-0">
-        <img src={img(listing.image, 500)} alt={listing.name} className="w-full h-44 sm:h-full object-cover" />
+        <img src={img(listing.image, 500)} alt={listing.name} loading="lazy" className="w-full h-44 sm:h-full object-cover" />
         {(listing.featured || listing.verified) && (
           <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
             {listing.featured && <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Featured</span></Badge>}
@@ -920,7 +920,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
               style={{ borderColor: i === activeImg ? C.blue : "transparent" }}
               className="shrink-0 rounded-md overflow-hidden border-2"
             >
-              <img src={img(src, 150)} className="w-16 h-16 sm:w-20 sm:h-20 object-cover" alt={`${listing.name} view ${i + 1}`} />
+              <img src={img(src, 150)} loading="lazy" className="w-16 h-16 sm:w-20 sm:h-20 object-cover" alt={`${listing.name} view ${i + 1}`} />
             </button>
           ))}
         </div>
@@ -2193,7 +2193,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                 <tr key={l.id} style={{ borderColor: C.border }} className="border-t">
                   <td className="py-2.5 px-4 font-semibold truncate" style={{ color: C.ink }}>
                     <div className="flex items-center gap-2.5">
-                      <img src={img(l.image, 100)} alt={l.name} className="w-9 h-9 rounded object-cover flex-shrink-0" />
+                      <img src={img(l.image, 100)} alt={l.name} loading="lazy" className="w-9 h-9 rounded object-cover flex-shrink-0" />
                       <span className="truncate">{l.name}</span>
                     </div>
                   </td>
