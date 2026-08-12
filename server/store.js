@@ -18,6 +18,7 @@ function mapUser(row) {
     subscription: row.subscription,
     hasUsedFreeTrial: row.has_used_free_trial,
     createdAt: row.created_at,
+    emailVerified: row.email_verified,
   };
 }
 
@@ -258,6 +259,54 @@ export const store = {
   async getUsers() {
     const { rows } = await pool.query("SELECT * FROM users ORDER BY id ASC");
     return rows.map(mapUser);
+  },
+
+  // ---- password reset ----
+  // The token itself is a random string generated in index.js (never the raw
+  // password) — this just stores it with an expiry so /reset-password can
+  // look the user up and confirm the link hasn't gone stale.
+  async setResetToken(userId, token, expiresAt) {
+    await pool.query(
+      "UPDATE users SET reset_token = $1, reset_token_expires = $2 WHERE id = $3",
+      [token, expiresAt, userId]
+    );
+  },
+  async getUserByResetToken(token) {
+    const { rows } = await pool.query(
+      "SELECT * FROM users WHERE reset_token = $1 AND reset_token_expires > now()",
+      [token]
+    );
+    return mapUser(rows[0]);
+  },
+  async resetPassword(userId, passwordHash) {
+    // Clearing the token on use means a reset link only ever works once.
+    const { rows } = await pool.query(
+      "UPDATE users SET password_hash = $1, reset_token = NULL, reset_token_expires = NULL WHERE id = $2 RETURNING *",
+      [passwordHash, userId]
+    );
+    return mapUser(rows[0]);
+  },
+
+  // ---- email verification ----
+  async setVerifyToken(userId, token, expiresAt) {
+    await pool.query(
+      "UPDATE users SET verify_token = $1, verify_token_expires = $2 WHERE id = $3",
+      [token, expiresAt, userId]
+    );
+  },
+  async getUserByVerifyToken(token) {
+    const { rows } = await pool.query(
+      "SELECT * FROM users WHERE verify_token = $1 AND verify_token_expires > now()",
+      [token]
+    );
+    return mapUser(rows[0]);
+  },
+  async markEmailVerified(userId) {
+    const { rows } = await pool.query(
+      "UPDATE users SET email_verified = true, verify_token = NULL, verify_token_expires = NULL WHERE id = $1 RETURNING *",
+      [userId]
+    );
+    return mapUser(rows[0]);
   },
 
   // ---- inquiries ----
