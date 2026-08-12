@@ -273,7 +273,7 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
             )}
           </div>
 
-          <button className="md:hidden text-white" onClick={() => setMobileOpen(!mobileOpen)}>
+          <button className="md:hidden text-white" onClick={() => setMobileOpen(!mobileOpen)} aria-label={mobileOpen ? "Close menu" : "Open menu"}>
             {mobileOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
         </div>
@@ -337,6 +337,7 @@ function Hero({ searchQuery, setSearchQuery }) {
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Search by hostel or apartment name"
+              aria-label="Search by hostel or apartment name"
               className="bg-transparent outline-none text-sm w-full"
               style={{ color: C.ink }}
             />
@@ -472,6 +473,7 @@ function FilterSidebar({ filters, setFilters, resultCount }) {
       <div className="mb-5">
         <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Bathroom</p>
         <select
+          aria-label="Bathroom type"
           value={filters.bath}
           onChange={(e) => setFilters((f) => ({ ...f, bath: e.target.value }))}
           style={{ borderColor: C.border, color: C.ink }}
@@ -514,6 +516,7 @@ function ListingCard({ listing, isFav, toggleFav, onOpen }) {
         <button
           onClick={() => toggleFav(listing.id)}
           className="absolute top-2 right-2 w-8 h-8 rounded-full bg-white/90 flex items-center justify-center hover:bg-white"
+          aria-label={isFav ? "Remove from saved" : "Save this listing"}
         >
           <Heart size={16} color={isFav ? C.blue : C.gray400} fill={isFav ? C.blue : "none"} />
         </button>
@@ -633,6 +636,7 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading }) {
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
               <h2 style={{ color: C.ink }} className="font-bold text-lg">{filtered.length} places to stay</h2>
               <select
+                aria-label="Sort listings"
                 value={sort}
                 onChange={(e) => setSort(e.target.value)}
                 style={{ borderColor: C.border, color: C.ink }}
@@ -753,7 +757,7 @@ function ContactModal({ listing, roomType, onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,20,35,0.55)" }} onClick={onClose}>
       <div style={{ background: C.white }} className="rounded-lg max-w-md w-full p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4"><X size={20} color={C.gray600} /></button>
+        <button onClick={onClose} className="absolute top-4 right-4" aria-label="Close"><X size={20} color={C.gray600} /></button>
         <h3 style={{ color: C.ink }} className="font-bold text-lg mb-1">Contact about this room</h3>
         <p style={{ color: C.gray600 }} className="text-sm mb-4">{listing.name}{roomType ? ` · ${roomType}` : ""}</p>
 
@@ -856,7 +860,7 @@ function ReviewForm({ listingId, onSubmitted }) {
       <div className="grid grid-cols-1 sm:grid-cols-[1fr_100px] gap-2 mb-2">
         <input placeholder="Your name" value={name} onChange={(e) => setName(e.target.value)}
           style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
-        <select value={rating} onChange={(e) => setRating(Number(e.target.value))}
+        <select value={rating} aria-label="Rating out of 10" onChange={(e) => setRating(Number(e.target.value))}
           style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
           {[10, 9, 8, 7, 6, 5, 4, 3, 2, 1].map((n) => <option key={n} value={n}>{n}/10</option>)}
         </select>
@@ -901,7 +905,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
         </div>
         <div className="flex items-center gap-3">
           <ScoreBadge score={listing.rating} />
-          <button onClick={() => toggleFav(listing.id)} style={{ borderColor: C.border }} className="border w-10 h-10 rounded-md flex items-center justify-center">
+          <button onClick={() => toggleFav(listing.id)} style={{ borderColor: C.border }} className="border w-10 h-10 rounded-md flex items-center justify-center" aria-label={isFav ? "Remove from saved" : "Save this listing"}>
             <Heart size={18} color={isFav ? C.blue : C.gray400} fill={isFav ? C.blue : "none"} />
           </button>
         </div>
@@ -995,6 +999,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
                         onClick={() => setWalkStep((s) => (s - 1 + walkthroughStops.length) % walkthroughStops.length)}
                         style={{ background: "rgba(0,0,0,0.45)" }}
                         className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 hover:bg-black/60"
+                        aria-label="Previous photo"
                       >
                         <ChevronLeft size={20} color={C.white} />
                       </button>
@@ -1002,6 +1007,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
                         onClick={() => setWalkStep((s) => (s + 1) % walkthroughStops.length)}
                         style={{ background: "rgba(0,0,0,0.45)" }}
                         className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full p-1.5 hover:bg-black/60"
+                        aria-label="Next photo"
                       >
                         <ChevronRight size={20} color={C.white} />
                       </button>
@@ -1020,6 +1026,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
                         onClick={() => setWalkStep(i)}
                         style={{ borderColor: i === walkStep ? C.blue : "transparent" }}
                         className="shrink-0 rounded-md overflow-hidden border-2"
+                        aria-label={`View ${stop.label || `stop ${i + 1}`}`}
                       >
                         <img src={stop.image} className="w-14 h-14 object-cover" alt={stop.label || `Stop ${i + 1}`} />
                       </button>
@@ -1062,6 +1069,7 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
             <div className="mb-4">
               <p style={{ color: C.ink }} className="text-xs font-semibold mb-1.5">Room category</p>
               <select
+                aria-label="Room category"
                 value={selectedRoom}
                 onChange={(e) => setSelectedRoom(e.target.value)}
                 style={{ borderColor: C.border, color: C.ink }}
@@ -1687,7 +1695,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
             <AlertTriangle size={16} color={C.yellowDark} className="mt-0.5 shrink-0" />
             <p style={{ color: C.yellowDark }} className="text-sm font-medium">{reminder.message}</p>
           </div>
-          <button onClick={() => setDismissedReminder(true)}><X size={15} color={C.gray600} /></button>
+          <button onClick={() => setDismissedReminder(true)} aria-label="Dismiss reminder"><X size={15} color={C.gray600} /></button>
         </div>
       )}
 
@@ -1832,11 +1840,11 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <input placeholder="Property name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
               style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
-            <select value={form.university} onChange={(e) => setForm({ ...form, university: e.target.value })}
+            <select value={form.university} aria-label="University" onChange={(e) => setForm({ ...form, university: e.target.value })}
               style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
               {UNIVERSITIES.map((u) => <option key={u}>{u}</option>)}
             </select>
-            <select value={form.bath} onChange={(e) => setForm({ ...form, bath: e.target.value })}
+            <select value={form.bath} aria-label="Bathroom type" onChange={(e) => setForm({ ...form, bath: e.target.value })}
               style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
               {["Shared bath", "Ensuite bath"].map((b) => <option key={b}>{b}</option>)}
             </select>
@@ -1844,7 +1852,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
 
           <div className="mb-4">
             <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Pricing period</p>
-            <select value={form.pricingPeriod} onChange={(e) => setForm({ ...form, pricingPeriod: e.target.value })}
+            <select value={form.pricingPeriod} aria-label="Pricing period" onChange={(e) => setForm({ ...form, pricingPeriod: e.target.value })}
               style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none w-full sm:w-64">
               {PRICING_PERIODS.map((p) => <option key={p}>{p}</option>)}
             </select>
@@ -1858,7 +1866,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                 style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
               <input type="number" min="1" placeholder="Minutes" value={form.travelMinutes} onChange={(e) => setForm({ ...form, travelMinutes: e.target.value })}
                 style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
-              <select value={form.travelMode} onChange={(e) => setForm({ ...form, travelMode: e.target.value })}
+              <select value={form.travelMode} aria-label="Travel mode" onChange={(e) => setForm({ ...form, travelMode: e.target.value })}
                 style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
                 <option value="walk">min walk to campus</option>
                 <option value="drive">min drive to campus</option>
@@ -1949,6 +1957,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                     )}
                     {r.checked && features.advancedAvailability && (
                       <select
+                        aria-label={`${r.roomType} availability`}
                         value={r.availability}
                         onChange={(e) => setHostelRoomAvailability(r.roomType, e.target.value)}
                         style={{ borderColor: C.border, color: C.ink }}
@@ -1970,7 +1979,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
             <div className="mb-4">
               <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Room type &amp; price</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <select value={form.roomType} onChange={(e) => setForm({ ...form, roomType: e.target.value })}
+                <select value={form.roomType} aria-label="Room type" onChange={(e) => setForm({ ...form, roomType: e.target.value })}
                   style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
                   {roomTypeOptions.map((r) => <option key={r}>{r}</option>)}
                 </select>
@@ -2030,6 +2039,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                       onClick={() => setForm((f) => ({ ...f, imageData: "" }))}
                       style={{ background: C.white, borderColor: C.border }}
                       className="absolute -top-2 -right-2 border rounded-full p-0.5"
+                      aria-label="Remove photo"
                     >
                       <X size={12} color={C.gray600} />
                     </button>
@@ -2051,6 +2061,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                       onClick={() => removeGalleryImage(i)}
                       style={{ background: C.white, borderColor: C.border }}
                       className="absolute -top-2 -right-2 border rounded-full p-0.5"
+                      aria-label={`Remove room photo ${i + 1}`}
                     >
                       <X size={12} color={C.gray600} />
                     </button>
@@ -2212,10 +2223,10 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                   </td>
                   <td className="py-2.5 px-4">
                     <div className="flex items-center justify-end gap-3">
-                      <button onClick={() => startEdit(l)} title="Edit listing">
+                      <button onClick={() => startEdit(l)} title="Edit listing" aria-label={`Edit ${l.name}`}>
                         <Pencil size={15} color={C.gray600} className="cursor-pointer" />
                       </button>
-                      <button onClick={() => handleDelete(l.id)} disabled={deletingId === l.id} title="Delete listing">
+                      <button onClick={() => handleDelete(l.id)} disabled={deletingId === l.id} title="Delete listing" aria-label={`Delete ${l.name}`}>
                         <Trash2 size={15} color={deletingId === l.id ? C.gray400 : C.gray600} className="cursor-pointer" />
                       </button>
                     </div>
@@ -2586,7 +2597,7 @@ function ContactUsModal({ onClose }) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,20,35,0.55)" }} onClick={onClose}>
       <div style={{ background: C.white }} className="rounded-lg max-w-sm w-full p-6 relative" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} className="absolute top-4 right-4"><X size={20} color={C.gray600} /></button>
+        <button onClick={onClose} className="absolute top-4 right-4" aria-label="Close"><X size={20} color={C.gray600} /></button>
         <h3 style={{ color: C.ink }} className="font-bold text-lg mb-1">Contact BookInn</h3>
         <p style={{ color: C.gray600 }} className="text-sm mb-5">We usually reply within a day.</p>
 
@@ -3408,7 +3419,7 @@ export default function App() {
         user={user} onOwnerDashboardClick={goToAdmin} onListPropertyClick={goToListProperty} onSignOut={handleSignOut}
       />
 
-      <div className="flex-1">
+      <main className="flex-1">
         {view === "home" && (
           listingsError ? (
             <div className="max-w-6xl mx-auto px-4 py-16 text-center">
@@ -3477,7 +3488,7 @@ export default function App() {
             <PlatformAdminView token={platformAdminToken} />
           )
         )}
-      </div>
+      </main>
 
       {view === "platform-admin" ? (
         platformAdminUser && (
