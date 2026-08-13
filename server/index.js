@@ -10,6 +10,8 @@ import { store } from "./store.js";
 import { migrate } from "./db.js";
 import { PLAN_PRICES, PLAN_FEATURES, PLAN_ORDER, maxListingsForView, computeSubscriptionView, reminderForView } from "./plans.js";
 import { uploadBuffer, cloudinaryConfigured } from "./cloudinary.js";
+import crypto from "crypto";
+import { sendPasswordResetEmail, sendVerificationEmail, emailConfigured } from "./email.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -56,6 +58,7 @@ function publicUser(user) {
     subscriptionView: computeSubscriptionView(user),
     hasUsedFreeTrial: !!user.hasUsedFreeTrial,
     createdAt: user.createdAt,
+    emailVerified: !!user.emailVerified,
   };
 }
 
@@ -186,8 +189,66 @@ app.post("/api/auth/signup", ah(async (req, res) => {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await store.addUser({ name, email, passwordHash, role });
+
+  // Sends a "confirm your email" link. A failure here (e.g. Resend not yet
+  // configured) is logged but never blocks account creation — the person can
+  // still sign in and use BookInn immediately either way.
+  const verifyToken = crypto.randomBytes(32).toString("hex");
+  const verifyExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+  await store.setVerifyToken(user.id, verifyToken, verifyExpiresAt);
+  try {
+    await sendVerificationEmail(user.email, verifyToken);
+  } catch (err) {
+    console.error("Failed to send verification email:", err);
+  }
+
   const token = signToken(user);
   res.status(201).json({ token, user: publicUser(user) });
+}));
+
+// Forgot password — always responds the same way whether or not the email is
+// registered, so this endpoint can't be used to check which emails have
+// BookInn accounts.
+app.post("/api/auth/forgot-password", ah(async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: "Email is required." });
+  const user = await store.getUserByEmail(email);
+  if (user) {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+    await store.setResetToken(user.id, token, expiresAt);
+    try {
+      await sendPasswordResetEmail(user.email, token);
+    } catch (err) {
+      console.error("Failed to send password reset email:", err);
+    }
+  }
+  res.json({ message: "If an account exists for that email, a reset link has been sent." });
+}));
+
+// Reset password — the token proves the person clicked the emailed link;
+// it's single-use (store.resetPassword clears it) and expires after 1 hour.
+app.post("/api/auth/reset-password", ah(async (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || !password) return res.status(400).json({ error: "A token and new password are required." });
+  if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+  const user = await store.getUserByResetToken(token);
+  if (!user) return res.status(400).json({ error: "This reset link is invalid or has expired. Request a new one." });
+  const passwordHash = await bcrypt.hash(password, 10);
+  const updated = await store.resetPassword(user.id, passwordHash);
+  const jwtToken = signToken(updated);
+  res.json({ token: jwtToken, user: publicUser(updated) });
+}));
+
+// Verify email — the person clicks the link sent at signup; single-use,
+// expires after 24 hours.
+app.post("/api/auth/verify-email", ah(async (req, res) => {
+  const { token } = req.body || {};
+  if (!token) return res.status(400).json({ error: "A verification token is required." });
+  const user = await store.getUserByVerifyToken(token);
+  if (!user) return res.status(400).json({ error: "This verification link is invalid or has expired." });
+  const updated = await store.markEmailVerified(user.id);
+  res.json({ user: publicUser(updated) });
 }));
 
 app.post("/api/auth/login", ah(async (req, res) => {
