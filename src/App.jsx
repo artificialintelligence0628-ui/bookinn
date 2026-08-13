@@ -2250,6 +2250,7 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState("Student");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -2272,9 +2273,10 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
 
   const handleSignUp = async () => {
     setError("");
-    if (!name || !email || !password) { setError("Fill in all fields to create an account."); return; }
+    if (!name || !email || !password || !confirmPassword) { setError("Fill in all fields to create an account."); return; }
     if (!emailValid(email)) { setError("Enter a valid email address."); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (password !== confirmPassword) { setError("Passwords don't match."); return; }
     setBusy(true);
     try {
       const data = await api.signup(name, email, password, role);
@@ -2348,8 +2350,18 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
           <input placeholder="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
           <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && submit()}
+            onKeyDown={(e) => e.key === "Enter" && mode === "signin" && submit()}
             style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
+          {mode === "signup" && (
+            <input placeholder="Confirm password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+              style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
+          )}
+          {mode === "signin" && (
+            <button type="button" onClick={() => setView("forgot-password")} style={{ color: C.blue }} className="text-xs font-semibold text-right hover:underline -mt-1">
+              Forgot password?
+            </button>
+          )}
           <PrimaryButton full onClick={submit} disabled={busy}>
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
           </PrimaryButton>
@@ -2362,6 +2374,187 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
         <p style={{ color: C.gray600 }} className="text-xs text-center mt-2">
           Property owner? <button onClick={() => setView("pricing")} style={{ color: C.blue }} className="font-semibold hover:underline">List your property</button>
         </p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   FORGOT PASSWORD — requests a reset link by email. Always shows the same
+   confirmation regardless of whether the email is registered (matches the
+   backend's behavior), so this screen can't be used to check who has an
+   account.
+--------------------------------------------------------- */
+function ForgotPasswordView({ setView }) {
+  const [email, setEmail] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [sent, setSent] = useState(false);
+
+  const submit = async () => {
+    setError("");
+    if (!email) { setError("Enter your email address."); return; }
+    setBusy(true);
+    try {
+      await api.forgotPassword(email);
+      setSent(true);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-16">
+      <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white">
+        <img src={bookinnWordmark} alt="BookInn" className="h-8 mb-4" />
+        <h1 style={{ color: C.ink }} className="text-xl font-extrabold mb-1">Reset your password</h1>
+        <p style={{ color: C.gray600 }} className="text-sm mb-4">Enter your email and we'll send you a link to reset your password.</p>
+
+        {sent ? (
+          <div style={{ background: C.blueLight }} className="rounded-md p-4 text-center mb-4">
+            <Check className="mx-auto mb-2" color={C.navy} />
+            <p style={{ color: C.navy }} className="font-semibold text-sm">
+              If an account exists for that email, a reset link has been sent. Check your inbox.
+            </p>
+          </div>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {error && (
+              <div style={{ background: "#fdecea", color: "#b3261e" }} className="text-xs rounded-md px-3 py-2">
+                {error}
+              </div>
+            )}
+            <input placeholder="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && submit()}
+              style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
+            <PrimaryButton full onClick={submit} disabled={busy}>
+              {busy ? "Sending…" : "Send reset link"}
+            </PrimaryButton>
+          </div>
+        )}
+
+        <p style={{ color: C.gray600 }} className="text-xs text-center mt-4">
+          <button onClick={() => setView("login")} style={{ color: C.blue }} className="font-semibold hover:underline">Back to sign in</button>
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   RESET PASSWORD — landing page for the emailed reset link
+   (bookinngh.com/reset-password?token=...). On success, signs the person
+   straight in with their new password, same as the login/signup flows.
+--------------------------------------------------------- */
+function ResetPasswordView({ token, onAuthSuccess, setView }) {
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async () => {
+    setError("");
+    if (!password || !confirmPassword) { setError("Enter and confirm your new password."); return; }
+    if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
+    if (password !== confirmPassword) { setError("Passwords don't match."); return; }
+    setBusy(true);
+    try {
+      const data = await api.resetPassword(token, password);
+      onAuthSuccess(data.user, data.token);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!token) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16">
+        <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white text-center">
+          <p style={{ color: C.ink }} className="font-semibold mb-2">This reset link is missing or invalid</p>
+          <p style={{ color: C.gray600 }} className="text-sm mb-4">Request a new password reset link to continue.</p>
+          <PrimaryButton onClick={() => setView("forgot-password")}>Request new link</PrimaryButton>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-16">
+      <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white">
+        <img src={bookinnWordmark} alt="BookInn" className="h-8 mb-4" />
+        <h1 style={{ color: C.ink }} className="text-xl font-extrabold mb-1">Set a new password</h1>
+        <p style={{ color: C.gray600 }} className="text-sm mb-4">Choose a new password for your BookInn account.</p>
+
+        <div className="flex flex-col gap-3">
+          {error && (
+            <div style={{ background: "#fdecea", color: "#b3261e" }} className="text-xs rounded-md px-3 py-2">
+              {error}
+            </div>
+          )}
+          <input placeholder="New password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
+          <input placeholder="Confirm new password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && submit()}
+            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
+          <PrimaryButton full onClick={submit} disabled={busy}>
+            {busy ? "Saving…" : "Set new password"}
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
+   VERIFY EMAIL — landing page for the emailed "confirm your email" link
+   (bookinngh.com/verify-email?token=...). Fires the verification call once
+   on load; the account already works normally either way, this just flags
+   the email as confirmed.
+--------------------------------------------------------- */
+function VerifyEmailView({ token, setView, onVerified }) {
+  const [status, setStatus] = useState("checking"); // checking | success | error
+  const [error, setError] = useState("");
+
+  React.useEffect(() => {
+    if (!token) { setStatus("error"); setError("This verification link is missing or invalid."); return; }
+    api.verifyEmail(token)
+      .then((data) => {
+        setStatus("success");
+        onVerified?.(data.user);
+      })
+      .catch((err) => {
+        setStatus("error");
+        setError(err.message);
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [token]);
+
+  return (
+    <div className="max-w-md mx-auto px-4 py-16">
+      <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white text-center">
+        <img src={bookinnWordmark} alt="BookInn" className="h-8 mb-4 mx-auto" />
+        {status === "checking" && (
+          <p style={{ color: C.gray600 }} className="text-sm">Confirming your email…</p>
+        )}
+        {status === "success" && (
+          <>
+            <div style={{ background: C.blueLight }} className="rounded-md p-4 mb-4">
+              <Check className="mx-auto mb-2" color={C.navy} />
+              <p style={{ color: C.navy }} className="font-semibold text-sm">Your email is confirmed.</p>
+            </div>
+            <PrimaryButton onClick={() => setView("home")}>Continue to BookInn</PrimaryButton>
+          </>
+        )}
+        {status === "error" && (
+          <>
+            <p style={{ color: "#b3261e" }} className="font-semibold text-sm mb-4">{error}</p>
+            <PrimaryButton onClick={() => setView("home")}>Continue to BookInn</PrimaryButton>
+          </>
+        )}
       </div>
     </div>
   );
@@ -3135,6 +3328,9 @@ const VIEW_TO_PATH = {
   account: "/account",
   admin: "/owner-dashboard",       // per-owner listings dashboard
   login: "/login",
+  "forgot-password": "/forgot-password",
+  "reset-password": "/reset-password",   // ?token=... appended separately, read from window.location.search
+  "verify-email": "/verify-email",       // ?token=... appended separately, read from window.location.search
   "how-it-works": "/how-it-works",
   "help-center": "/help-center",
   "safety-tips": "/safety-tips",
@@ -3479,6 +3675,21 @@ export default function App() {
               authRedirect === "admin" ? "Sign in to manage your property listings." :
               undefined
             }
+          />
+        )}
+        {view === "forgot-password" && <ForgotPasswordView setView={setView} />}
+        {view === "reset-password" && (
+          <ResetPasswordView
+            token={new URLSearchParams(window.location.search).get("token")}
+            onAuthSuccess={handleAuthSuccess}
+            setView={setView}
+          />
+        )}
+        {view === "verify-email" && (
+          <VerifyEmailView
+            token={new URLSearchParams(window.location.search).get("token")}
+            setView={setView}
+            onVerified={(updatedUser) => { if (user) setUser(updatedUser); }}
           />
         )}
         {view === "platform-admin" && (
