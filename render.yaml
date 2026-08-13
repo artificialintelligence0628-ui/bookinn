@@ -21,3 +21,5 @@ services:
         sync: false # optional — only needed if you're using Paystack payments
       - key: VITE_PAYSTACK_PUBLIC_KEY
         sync: false # optional — only needed if you're using Paystack payments
+      - key: RESEND_API_KEY
+        sync: false # set to your Resend API key in the Render dashboard — required for password reset and email verification
