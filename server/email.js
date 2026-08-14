@@ -20,10 +20,25 @@ const FROM = process.env.EMAIL_FROM || "BookInn <noreply@bookinngh.com>";
 // Used to build the links inside emails — e.g. https://bookinngh.com/reset-password?token=...
 const FRONTEND_URL = process.env.FRONTEND_URL || "https://bookinngh.com";
 
+// The Resend SDK (v4+) does NOT throw on a failed send — it resolves with
+// { data, error }, where `error` holds the failure reason (bad from-address,
+// unverified domain, invalid recipient, etc). Checking only `await ...send()`
+// without inspecting this field meant failures were being silently
+// swallowed — the call "succeeded" from the caller's point of view even when
+// no email actually went out. This helper makes that failure visible by
+// throwing, so index.js's existing try/catch logs it properly.
+async function sendOrThrow(payload) {
+  const { data, error } = await resend.emails.send(payload);
+  if (error) {
+    throw new Error(`Resend error: ${error.message || JSON.stringify(error)}`);
+  }
+  return data;
+}
+
 export async function sendPasswordResetEmail(to, token) {
   if (!resend) return; // silently no-op if Resend isn't configured yet — the caller already logs a warning
   const link = `${FRONTEND_URL}/reset-password?token=${token}`;
-  await resend.emails.send({
+  await sendOrThrow({
     from: FROM,
     to,
     subject: "Reset your BookInn password",
@@ -46,7 +61,7 @@ export async function sendPasswordResetEmail(to, token) {
 export async function sendVerificationEmail(to, token) {
   if (!resend) return;
   const link = `${FRONTEND_URL}/verify-email?token=${token}`;
-  await resend.emails.send({
+  await sendOrThrow({
     from: FROM,
     to,
     subject: "Confirm your BookInn email address",
