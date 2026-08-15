@@ -115,7 +115,7 @@ const PRICING_TIERS = [
     features: ["1 hostel/apartment listing", "Up to 3 photos", "Basic listing", "Room availability", "Student enquiries","WhatsApp enquiries", "Standard search placement"],
   },
   {
-    name: "Premium", amount: 250, price: "GH₵350", period: "/year", highlight: true,
+    name: "Premium", amount: 350, price: "GH₵350", period: "/year", highlight: true,
     features: ["Up to 2 hostel/apartment listings", "Up to 10 photos per listing", "Video tour", "WhatsApp enquiries", "Higher search ranking", "Availability management", "Analytics", "Verified badge"],
   },
   {
