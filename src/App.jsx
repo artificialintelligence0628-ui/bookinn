@@ -3150,6 +3150,10 @@ function PlatformAdminView({ token, onManageOwner }) {
     },
   ];
 
+  // Clicking "View students" on a listing opens this instead of jumping tabs —
+  // a focused popup of just that property's students, by name.
+  const [rosterListing, setRosterListing] = useState(null);
+
   const listingColumns = [
     { key: "name", label: "Property" },
     { key: "university", label: "University" },
@@ -3157,10 +3161,10 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "price", label: "Price", render: (l) => `GH₵${Number(l.price).toLocaleString()}` },
     { key: "featured", label: "Featured", render: (l) => (l.featured ? <BadgeCheck size={16} color={C.blue} /> : <span style={{ color: C.gray400 }}>—</span>) },
     { key: "rating", label: "Rating", render: (l) => l.rating ? `${l.rating} ★ (${l.reviewCount || 0})` : "No reviews yet" },
-    {
+   {
       key: "students", label: "Students", render: (l) => (
         <button
-          onClick={() => { setTab("inquiries"); setQuery(l.name); }}
+          onClick={() => setRosterListing(l)}
           style={{ color: C.blue }}
           className="text-xs font-semibold hover:underline whitespace-nowrap"
         >
@@ -3317,10 +3321,59 @@ function PlatformAdminView({ token, onManageOwner }) {
           {tab === "listings" && (
             <DataTable columns={listingColumns} rows={filteredListings} emptyLabel="No listings found." />
           )}
-          {tab === "inquiries" && (
+        {tab === "inquiries" && (
             <DataTable columns={inquiryColumns} rows={filteredInquiries} emptyLabel="No inquiries yet." />
           )}
         </>
+      )}
+
+      {rosterListing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,20,35,0.55)" }} onClick={() => setRosterListing(null)}>
+          <div style={{ background: C.white }} className="rounded-lg max-w-md w-full p-6 relative max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setRosterListing(null)} className="absolute top-4 right-4" aria-label="Close"><X size={20} color={C.gray600} /></button>
+            <h3 style={{ color: C.ink }} className="font-bold text-lg mb-1">Students — {rosterListing.name}</h3>
+            {(() => {
+              const roster = inquiries.filter((inq) => inq.listingId === rosterListing.id);
+              if (!roster.length) {
+                return <p style={{ color: C.gray600 }} className="text-sm mt-4">No students have inquired about this property yet.</p>;
+              }
+              return (
+                <>
+                  <p style={{ color: C.gray600 }} className="text-sm mb-4">{roster.length} student{roster.length > 1 ? "s" : ""}</p>
+                  <div className="flex flex-col divide-y" style={{ borderColor: C.border }}>
+                    {roster.map((s) => (
+                      <div key={s.id} className="py-3 flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p style={{ color: C.ink }} className="text-sm font-semibold flex items-center gap-1.5">
+                            {s.name}
+                            {s.confirmedResident && <Badge tone="green">Resident</Badge>}
+                          </p>
+                          <p style={{ color: C.gray600 }} className="text-xs mt-0.5">
+                            {s.roomType ? `${s.roomType} · ` : ""}{s.phone || s.email || "No contact provided"}
+                          </p>
+                          <p style={{ color: C.gray400 }} className="text-xs mt-0.5">
+                            {s.moveIn ? `Move-in: ${s.moveIn}` : ""}
+                            {s.createdAt ? ` · Booked ${new Date(s.createdAt).toLocaleDateString()}` : ""}
+                          </p>
+                        </div>
+                        <button
+                          onClick={async () => {
+                            const updated = await api.setConfirmedResident(s.id, !s.confirmedResident, token);
+                            setInquiries((prev) => prev.map((i) => (i.id === s.id ? updated.inquiry : i)));
+                          }}
+                          style={{ borderColor: C.border, color: s.confirmedResident ? C.gray600 : C.blue }}
+                          className="border rounded-md px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0"
+                        >
+                          {s.confirmedResident ? "Unmark" : "Mark resident"}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </>
+              );
+            })()}
+          </div>
+        </div>
       )}
     </div>
   );
