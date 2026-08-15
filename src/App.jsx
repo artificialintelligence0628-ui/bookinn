@@ -1591,11 +1591,12 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
       travelKm: distanceMatch && distanceMatch[1] ? distanceMatch[1] : "",
       travelMinutes: distanceMatch ? distanceMatch[2] : "",
       travelMode: distanceMatch ? distanceMatch[3].toLowerCase() : "walk",
-      pricingPeriod: listing.pricingPeriod || "Per semester",
+     pricingPeriod: listing.pricingPeriod || "Per semester",
       hostelRooms: HOSTEL_ROOM_TYPES.map((rt) => {
         const match = existingRooms.find((r) => r.roomType === rt);
         return { roomType: rt, checked: !!match, price: match ? String(match.price) : "", availability: match?.availability || AVAILABILITY_STATUSES[0] };
       }),
+      uploadingImage: false, uploadingGallery: false, uploadingVideo: false, uploadingWalkthrough: {},
     });
     setShowForm(true);
     setSubmitError("");
