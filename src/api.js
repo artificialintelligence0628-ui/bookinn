@@ -48,6 +48,7 @@ export const api = {
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
   me: (token) => request("/auth/me", { token }),
   forgotPassword: (email) => request("/auth/forgot-password", { method: "POST", body: { email } }),
+  resendVerification: (email) => request("/auth/resend-verification", { method: "POST", body: { email } }),
   resetPassword: (token, password) => request("/auth/reset-password", { method: "POST", body: { token, password } }),
   verifyEmail: (token) => request("/auth/verify-email", { method: "POST", body: { token } }),
   verifyPayment: (reference, tier, token) => request("/payments/verify", { method: "POST", body: { reference, tier }, token }),
