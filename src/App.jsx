@@ -213,7 +213,7 @@ function GhostButton({ children, onClick, full, style, ...rest }) {
 /* ---------------------------------------------------------
    HEADER
 --------------------------------------------------------- */
-function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOwnerDashboardClick, onListPropertyClick, onSignOut }) {
+function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOwnerDashboardClick, onListPropertyClick, onSignOut, platformAdminUser, onAdminSignOut }) {
   const navItem = (key, label) => (
     <button
       onClick={() => { setView(key); setMobileOpen(false); }}
@@ -224,61 +224,97 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
     </button>
   );
 
+  // On the platform-admin panel, the header always shows the admin's own
+  // identity and a sign-out that ends the admin session — never the public
+  // site's user/token, which can currently belong to an impersonated owner
+  // (see handleManageOwner). Showing "Hi, <owner name>" here while looking
+  // at the admin panel was misleading, since that owner session is separate
+  // from — and irrelevant to — the admin session actually powering this page.
+  const isAdminPanel = view === "platform-admin";
+
   return (
     <header style={{ background: C.navy }}>
       <div className="max-w-6xl mx-auto px-4 md:px-6">
         <div className="flex items-center justify-between h-16">
-          <button onClick={() => setView("home")} className="flex items-center gap-2">
+          <button onClick={() => setView(isAdminPanel ? "platform-admin" : "home")} className="flex items-center gap-2">
             <img src={ibiIcon} alt="BookInn" className="w-8 h-8 rounded-full" />
             <span className="text-white font-extrabold text-xl tracking-tight">BookInn</span>
+            {isAdminPanel && (
+              <span style={{ background: "rgba(255,255,255,0.15)", color: C.white }} className="text-xs font-semibold px-2 py-0.5 rounded-md ml-1">
+                Admin
+              </span>
+            )}
           </button>
 
-          <nav className="hidden md:flex items-center gap-6">
-            {navItem("home", "Explore stays")}
-            {navItem("saved", `Saved${favCount ? ` (${favCount})` : ""}`)}
-            <button
-              onClick={() => { onListPropertyClick(); setMobileOpen(false); }}
-              style={{ color: view === "pricing" || view === "admin" ? C.white : "rgba(255,255,255,0.85)" }}
-              className="text-sm font-semibold hover:text-white transition px-1"
-            >
-              List your property
-            </button>
-          </nav>
+          {!isAdminPanel && (
+            <nav className="hidden md:flex items-center gap-6">
+              {navItem("home", "Explore stays")}
+              {navItem("saved", `Saved${favCount ? ` (${favCount})` : ""}`)}
+              <button
+                onClick={() => { onListPropertyClick(); setMobileOpen(false); }}
+                style={{ color: view === "pricing" || view === "admin" ? C.white : "rgba(255,255,255,0.85)" }}
+                className="text-sm font-semibold hover:text-white transition px-1"
+              >
+                List your property
+              </button>
+            </nav>
+          )}
 
           <div className="hidden md:flex items-center gap-3">
-            <button onClick={() => { onOwnerDashboardClick(); setMobileOpen(false); }} style={{ color: C.white }} className="text-sm font-semibold flex items-center gap-1.5 hover:opacity-90">
-              <LayoutDashboard size={16} /> Owner dashboard
-            </button>
-            {user ? (
-              <div className="flex items-center gap-2.5">
-                <button onClick={() => setView("account")} style={{ color: C.white }} className="text-sm font-semibold hover:underline">
-                  Hi, {user.name.split(" ")[0]}
-                </button>
-                <button
-                  onClick={onSignOut}
-                  style={{ borderColor: "rgba(255,255,255,0.4)", color: C.white }}
-                  className="text-sm font-semibold px-3.5 py-2 rounded-md border hover:bg-white/10"
-                >
-                  Sign out
-                </button>
-              </div>
+            {isAdminPanel ? (
+              platformAdminUser && (
+                <div className="flex items-center gap-2.5">
+                  <span style={{ color: C.white }} className="text-sm font-semibold">
+                    {platformAdminUser.name.split(" ")[0]} (Admin)
+                  </span>
+                  <button
+                    onClick={onAdminSignOut}
+                    style={{ borderColor: "rgba(255,255,255,0.4)", color: C.white }}
+                    className="text-sm font-semibold px-3.5 py-2 rounded-md border hover:bg-white/10"
+                  >
+                    Sign out
+                  </button>
+                </div>
+              )
             ) : (
-              <button
-                onClick={() => setView("login")}
-                style={{ background: C.white, color: C.navy }}
-                className="text-sm font-semibold px-3.5 py-2 rounded-md flex items-center gap-1.5 hover:opacity-90"
-              >
-                <LogIn size={15} /> Sign in
-              </button>
+              <>
+                <button onClick={() => { onOwnerDashboardClick(); setMobileOpen(false); }} style={{ color: C.white }} className="text-sm font-semibold flex items-center gap-1.5 hover:opacity-90">
+                  <LayoutDashboard size={16} /> Owner dashboard
+                </button>
+                {user ? (
+                  <div className="flex items-center gap-2.5">
+                    <button onClick={() => setView("account")} style={{ color: C.white }} className="text-sm font-semibold hover:underline">
+                      Hi, {user.name.split(" ")[0]}
+                    </button>
+                    <button
+                      onClick={onSignOut}
+                      style={{ borderColor: "rgba(255,255,255,0.4)", color: C.white }}
+                      className="text-sm font-semibold px-3.5 py-2 rounded-md border hover:bg-white/10"
+                    >
+                      Sign out
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setView("login")}
+                    style={{ background: C.white, color: C.navy }}
+                    className="text-sm font-semibold px-3.5 py-2 rounded-md flex items-center gap-1.5 hover:opacity-90"
+                  >
+                    <LogIn size={15} /> Sign in
+                  </button>
+                )}
+              </>
             )}
           </div>
 
-          <button className="md:hidden text-white" onClick={() => setMobileOpen(!mobileOpen)} aria-label={mobileOpen ? "Close menu" : "Open menu"}>
-            {mobileOpen ? <X size={24} /> : <Menu size={24} />}
-          </button>
+          {!isAdminPanel && (
+            <button className="md:hidden text-white" onClick={() => setMobileOpen(!mobileOpen)} aria-label={mobileOpen ? "Close menu" : "Open menu"}>
+              {mobileOpen ? <X size={24} /> : <Menu size={24} />}
+            </button>
+          )}
         </div>
 
-        {mobileOpen && (
+        {!isAdminPanel && mobileOpen && (
           <div className="md:hidden pb-4 flex flex-col gap-3 border-t" style={{ borderColor: "rgba(255,255,255,0.15)" }}>
             <div className="pt-3 flex flex-col gap-3">
               {navItem("home", "Explore stays")}
@@ -3713,6 +3749,15 @@ export default function App() {
   // can be added/edited on their behalf, without needing their password or a
   // verified email. The admin's own separate platform-admin session is untouched.
   const handleManageOwner = (ownerUser, ownerToken) => {
+    // Clear any previously-cached owner data first — otherwise impersonating
+    // Owner B right after Owner A could briefly render A's stats/inquiries/
+    // listings before B's own data loads in.
+    setOwnerStats(null);
+    setOwnerInquiries([]);
+    setMyListings([]);
+    setMyMaxListings(1);
+    setMySubscription(null);
+    setReminder(null);
     setUser(ownerUser);
     setToken(ownerToken);
     localStorage.setItem("bookinn_token", ownerToken);
@@ -3737,6 +3782,19 @@ export default function App() {
     setToken(null);
     localStorage.removeItem("bookinn_token");
     setView("home");
+    // Clear every piece of cached per-account data (owner stats, inquiries,
+    // listings, subscription). Without this, if a different person signs
+    // into a different account right after, AdminView could render for a
+    // moment with the PREVIOUS owner's stats/inquiries/listings still in
+    // state — a real data leak between accounts, not just a stale-UI
+    // annoyance, since ownerInquiries contains other people's names/contacts.
+    setOwnerStats(null);
+    setOwnerInquiries([]);
+    setMyListings([]);
+    setMyMaxListings(1);
+    setMySubscription(null);
+    setReminder(null);
+    setPendingTier(null);
   };
 
   return (
@@ -3746,6 +3804,7 @@ export default function App() {
         view={view} setView={(v) => { setView(v); setMobileOpen(false); }} favCount={favorites.size}
         mobileOpen={mobileOpen} setMobileOpen={setMobileOpen}
         user={user} onOwnerDashboardClick={goToAdmin} onListPropertyClick={goToListProperty} onSignOut={handleSignOut}
+        platformAdminUser={platformAdminUser} onAdminSignOut={handleAdminSignOut}
       />
 
       <main className="flex-1">
@@ -3834,16 +3893,7 @@ export default function App() {
         )}
       </main>
 
-      {view === "platform-admin" ? (
-        platformAdminUser && (
-          <div style={{ borderColor: C.border }} className="border-t bg-white px-4 md:px-6 py-3 flex items-center justify-between max-w-6xl mx-auto w-full">
-            <span style={{ color: C.gray600 }} className="text-xs">Signed in as {platformAdminUser.name} (Admin)</span>
-            <button onClick={handleAdminSignOut} style={{ color: C.blue }} className="text-sm font-semibold flex items-center gap-1.5 hover:opacity-90">
-              <LogOut size={16} /> Sign out
-            </button>
-          </div>
-        )
-      ) : (
+      {view !== "platform-admin" && (
         <Footer setView={setView} onOwnerDashboardClick={goToAdmin} onListPropertyClick={goToListProperty} />
       )}
     </div>
