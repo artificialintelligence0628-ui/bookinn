@@ -67,6 +67,7 @@ function mapInquiry(row) {
     message: row.message,
     roomType: row.room_type,
     createdAt: row.created_at,
+    confirmedResident: !!row.confirmed_resident,
   };
 }
 
@@ -319,8 +320,15 @@ export const store = {
     );
     return mapInquiry(rows[0]);
   },
-  async getInquiries() {
+async getInquiries() {
     const { rows } = await pool.query("SELECT * FROM inquiries ORDER BY id DESC");
     return rows.map(mapInquiry);
+  },
+  async setConfirmedResident(id, confirmed) {
+    const { rows } = await pool.query(
+      "UPDATE inquiries SET confirmed_resident = $1 WHERE id = $2 RETURNING *",
+      [confirmed, id]
+    );
+    return mapInquiry(rows[0]);
   },
 };
