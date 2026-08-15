@@ -63,3 +63,8 @@ CREATE TABLE IF NOT EXISTS inquiries (
 
 CREATE INDEX IF NOT EXISTS idx_listings_owner_id ON listings(owner_id);
 CREATE INDEX IF NOT EXISTS idx_inquiries_listing_id ON inquiries(listing_id);
+
+-- Added after launch — lets an owner/admin manually mark a student as an
+-- actual confirmed resident (not just someone who paid the booking fee),
+-- since move-in itself happens off-platform and can't be verified automatically.
+ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS confirmed_resident BOOLEAN NOT NULL DEFAULT false;
