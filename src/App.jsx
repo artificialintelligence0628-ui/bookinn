@@ -2254,11 +2254,18 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
   const [role, setRole] = useState("Student");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // True when the last sign-in attempt was blocked specifically because the
+  // account's email isn't confirmed yet — lets us offer a "resend the link" option.
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendBusy, setResendBusy] = useState(false);
+  const [resendSent, setResendSent] = useState(false);
 
   const emailValid = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
   const handleSignIn = async () => {
     setError("");
+    setNeedsVerification(false);
+    setResendSent(false);
     if (!email || !password) { setError("Enter your email and password."); return; }
     setBusy(true);
     try {
@@ -2266,8 +2273,26 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
       onAuthSuccess(data.user, data.token);
     } catch (err) {
       setError(err.message);
+      if (err.message === "Please check your email to confirm your account first.") {
+        setNeedsVerification(true);
+      }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email) return;
+    setResendBusy(true);
+    try {
+      await api.resendVerification(email);
+      setResendSent(true);
+    } catch {
+      // resend-verification never errors on invalid email (privacy-safe), so this
+      // only happens on a network/server failure — the message below stays generic.
+      setResendSent(true);
+    } finally {
+      setResendBusy(false);
     }
   };
 
@@ -2303,14 +2328,14 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
 
         <div style={{ borderColor: C.border }} className="flex border rounded-md p-0.5 mb-4">
           <button
-            onClick={() => { setMode("signin"); setError(""); }}
+            onClick={() => { setMode("signin"); setError(""); setNeedsVerification(false); setResendSent(false); }}
             style={{ background: mode === "signin" ? C.blue : "transparent", color: mode === "signin" ? C.white : C.gray600 }}
             className="flex-1 text-sm font-semibold py-1.5 rounded-md transition"
           >
             Sign in
           </button>
           <button
-            onClick={() => { setMode("signup"); setError(""); }}
+            onClick={() => { setMode("signup"); setError(""); setNeedsVerification(false); setResendSent(false); }}
             style={{ background: mode === "signup" ? C.blue : "transparent", color: mode === "signup" ? C.white : C.gray600 }}
             className="flex-1 text-sm font-semibold py-1.5 rounded-md transition"
           >
@@ -2318,9 +2343,23 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
           </button>
         </div>
 
-        {error && (
+       {error && (
           <div style={{ background: "#fdecea", color: "#b3261e" }} className="text-xs rounded-md px-3 py-2 mb-3">
             {error}
+            {needsVerification && (
+              resendSent ? (
+                <p className="mt-1.5 font-semibold">Check your inbox for a new confirmation link.</p>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleResendVerification}
+                  disabled={resendBusy}
+                  className="block mt-1.5 font-semibold underline"
+                >
+                  {resendBusy ? "Sending…" : "Resend confirmation email"}
+                </button>
+              )
+            )}
           </div>
         )}
 
