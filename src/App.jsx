@@ -3022,7 +3022,7 @@ function SubscriptionBadge({ subscription }) {
   );
 }
 
-function PlatformAdminView({ token }) {
+function PlatformAdminView({ token, onManageOwner }) {
   const TABS = [
     { key: "overview", label: "Overview" },
     { key: "revenue", label: "Revenue" },
@@ -3112,12 +3112,42 @@ function PlatformAdminView({ token }) {
     return inq.name.toLowerCase().includes(q) || (listingNameById[inq.listingId] || "").toLowerCase().includes(q);
   });
 
-  const personColumns = [
+ const personColumns = [
     { key: "name", label: "Name" },
     { key: "email", label: "Email" },
     { key: "role", label: "Role", render: (u) => <RoleBadge role={u.role} /> },
     { key: "subscription", label: "Subscription", render: (u) => <SubscriptionBadge subscription={u.subscription} /> },
     { key: "createdAt", label: "Joined", render: (u) => u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—" },
+  ];
+
+  // Owners table gets one extra column — a button that logs the admin
+  // straight into that owner's dashboard to add/edit listings for them.
+  const [impersonatingId, setImpersonatingId] = useState(null);
+  const handleManageOwner = async (ownerId) => {
+    setImpersonatingId(ownerId);
+    try {
+      const data = await api.impersonateUser(ownerId, token);
+      onManageOwner(data.user, data.token);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setImpersonatingId(null);
+    }
+  };
+  const ownerColumns = [
+    ...personColumns,
+    {
+      key: "manage", label: "", render: (u) => (
+        <button
+          onClick={() => handleManageOwner(u.id)}
+          disabled={impersonatingId === u.id}
+          style={{ color: C.blue }}
+          className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+        >
+          {impersonatingId === u.id ? "Opening…" : "Manage listings →"}
+        </button>
+      ),
+    },
   ];
 
   const listingColumns = [
@@ -3281,8 +3311,8 @@ function PlatformAdminView({ token }) {
           {tab === "parents" && (
             <DataTable columns={personColumns} rows={byRole("Parent")} emptyLabel="No parents found." />
           )}
-          {tab === "owners" && (
-            <DataTable columns={personColumns} rows={byRole("Owner")} emptyLabel="No property owners found." />
+         {tab === "owners" && (
+            <DataTable columns={ownerColumns} rows={byRole("Owner")} emptyLabel="No property owners found." />
           )}
           {tab === "listings" && (
             <DataTable columns={listingColumns} rows={filteredListings} emptyLabel="No listings found." />
@@ -3625,6 +3655,17 @@ export default function App() {
     refreshPublicListings();
   };
 
+  // Used by the platform admin's "Manage listings" button — signs the admin's
+  // browser session in as that owner (their token, their dashboard) so listings
+  // can be added/edited on their behalf, without needing their password or a
+  // verified email. The admin's own separate platform-admin session is untouched.
+  const handleManageOwner = (ownerUser, ownerToken) => {
+    setUser(ownerUser);
+    setToken(ownerToken);
+    localStorage.setItem("bookinn_token", ownerToken);
+    setView("admin");
+  };
+
   const handleAuthSuccess = (loggedInUser, authToken) => {
     setUser(loggedInUser);
     setToken(authToken);
@@ -3735,7 +3776,7 @@ export default function App() {
           checkingAdminSession ? null : !platformAdminUser ? (
             <AdminLoginView onAuthSuccess={handleAdminAuthSuccess} />
           ) : (
-            <PlatformAdminView token={platformAdminToken} />
+            <PlatformAdminView token={platformAdminToken} onManageOwner={handleManageOwner} />
           )
         )}
       </main>
