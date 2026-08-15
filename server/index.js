@@ -758,6 +758,26 @@ app.get("/api/inquiries", requireAuth, ah(async (req, res) => {
   return res.status(403).json({ error: "Only property owners and platform admins can view inquiries." });
 }));
 
+// Marks (or unmarks) a student as an actual confirmed resident — separate from
+// having paid the booking fee, since whether they really moved in only the
+// owner (or platform admin, standing in for a busy owner) can confirm.
+app.patch("/api/inquiries/:id/confirm", requireAuth, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const { confirmed } = req.body || {};
+  const inquiries = await store.getInquiries();
+  const inquiry = inquiries.find((i) => i.id === id);
+  if (!inquiry) return res.status(404).json({ error: "Inquiry not found." });
+  const listings = await store.getListings();
+  const listing = listings.find((l) => l.id === inquiry.listingId);
+  if (!listing) return res.status(404).json({ error: "Listing not found." });
+  const user = await store.getUserById(req.user.sub);
+  if (user.role !== ADMIN_ROLE && listing.ownerId !== user.id) {
+    return res.status(403).json({ error: "You can only update students on your own listings." });
+  }
+  const updated = await store.setConfirmedResident(id, !!confirmed);
+  res.json({ inquiry: updated });
+}));
+
 // ---------------------------------------------------------
 // Owner dashboard — real, per-owner stats (replaces any hardcoded numbers on the frontend)
 // ---------------------------------------------------------
