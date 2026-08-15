@@ -827,6 +827,18 @@ app.get("/api/admin/users", requireAuth, requireAdmin, ah(async (req, res) => {
   res.json({ users });
 }));
 
+// Lets a platform admin manage an owner's listings on their behalf — e.g. the
+// owner sent details over WhatsApp because they're busy — without needing
+// their password or making them click a verification email first. Issues a
+// normal login token for that owner's account; admin accounts can't be
+// impersonated this way.
+app.post("/api/admin/users/:id/impersonate", requireAuth, requireAdmin, ah(async (req, res) => {
+  const targetUser = await store.getUserById(req.params.id);
+  if (!targetUser) return res.status(404).json({ error: "User not found." });
+  if (targetUser.role === ADMIN_ROLE) return res.status(400).json({ error: "Can't manage another admin account this way." });
+  const token = signToken(targetUser);
+  res.json({ token, user: publicUser(targetUser) });
+}));
 app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
   const users = await store.getUsers();
   const listings = await store.getListings();
