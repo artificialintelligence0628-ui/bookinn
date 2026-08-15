@@ -1763,7 +1763,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
               <Sparkles size={20} color={C.blue} className="mt-0.5 shrink-0" />
               <div>
                 <p style={{ color: C.navy }} className="text-sm font-extrabold">Free Trial Available</p>
-                <p style={{ color: C.ink }} className="text-sm mt-0.5">30 days free, no card required.</p>
+                <p style={{ color: C.ink }} className="text-sm mt-0.5">270 days free, no card required.</p>
                 <p style={{ color: C.gray600 }} className="text-xs mt-0.5">Click below to start your trial, then add your first listing to publish it to students.</p>
                 {trialError && <p style={{ color: "#b3261e" }} className="text-xs mt-1 font-medium">{trialError}</p>}
               </div>
