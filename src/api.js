@@ -63,5 +63,6 @@ export const api = {
   cancelSubscription: (token) => request("/subscription/cancel", { method: "POST", token }),
   // Platform admin only (role === "Admin") — site-wide stats and user directory.
   getAdminUsers: (token) => request("/admin/users", { token }),
+  impersonateUser: (id, token) => request(`/admin/users/${id}/impersonate`, { method: "POST", token }),
   getAdminStats: (token) => request("/admin/stats", { token }),
 };
