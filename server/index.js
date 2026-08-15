@@ -251,6 +251,27 @@ app.post("/api/auth/verify-email", ah(async (req, res) => {
   res.json({ user: publicUser(updated) });
 }));
 
+// Resend the signup verification link — same privacy-safe pattern as
+// forgot-password: always responds the same way whether or not the email is
+// registered, and also whether or not it's already verified, so this
+// endpoint can't be used to check who has an account.
+app.post("/api/auth/resend-verification", ah(async (req, res) => {
+  const { email } = req.body || {};
+  if (!email) return res.status(400).json({ error: "Email is required." });
+  const user = await store.getUserByEmail(email);
+  if (user && !user.emailVerified) {
+    const verifyToken = crypto.randomBytes(32).toString("hex");
+    const verifyExpiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+    await store.setVerifyToken(user.id, verifyToken, verifyExpiresAt);
+    try {
+      await sendVerificationEmail(user.email, verifyToken);
+    } catch (err) {
+      console.error("Failed to send verification email:", err);
+    }
+  }
+  res.json({ message: "If an account exists for that email and isn't verified yet, a new confirmation link has been sent." });
+}));
+
 app.post("/api/auth/login", ah(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
@@ -258,6 +279,13 @@ app.post("/api/auth/login", ah(async (req, res) => {
   if (!user) return res.status(401).json({ error: "Invalid email or password." });
   const ok = await bcrypt.compare(password, user.passwordHash);
   if (!ok) return res.status(401).json({ error: "Invalid email or password." });
+  // The platform admin account is seeded directly (never goes through the public
+  // signup/verify-email flow), so it's exempt from this check. Everyone else must
+  // have clicked their signup verification link — a single click is enough; after
+  // that emailVerified stays true forever, so this never blocks them again.
+  if (user.role !== ADMIN_ROLE && !user.emailVerified) {
+    return res.status(403).json({ error: "Please check your email to confirm your account first." });
+  }
   const token = signToken(user);
   res.json({ token, user: publicUser(user) });
 }));
