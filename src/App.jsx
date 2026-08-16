@@ -917,7 +917,7 @@ function ReviewForm({ listingId, onSubmitted }) {
   );
 }
 
-function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
+  function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded, user, onRequireAuth }) {
   const [showContact, setShowContact] = useState(false);
   const [activeImg, setActiveImg] = useState(0);
   const [walkStep, setWalkStep] = useState(0);
@@ -1132,7 +1132,13 @@ function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded }) {
             <div className="flex items-center gap-2"><MapPin size={15} /> {listing.distance}</div>
           </div>
 
-          <PrimaryButton full onClick={() => setShowContact(true)}>
+         <PrimaryButton
+            full
+            onClick={() => {
+              if (!user) { onRequireAuth(); return; }
+              setShowContact(true);
+            }}
+          >
             {listing.availability === "Fully booked" ? "Ask about waitlist" : "Contact / Book room"}
           </PrimaryButton>
           <p style={{ color: C.gray400 }} className="text-xs text-center mt-3">No payment required to send an inquiry</p>
@@ -3827,13 +3833,15 @@ export default function App() {
             <HomeView favorites={favorites} toggleFav={toggleFav} onOpenListing={openListing} listings={listings} loading={listingsLoading} />
           )
         )}
-        {view === "detail" && selectedListing && (
+       {view === "detail" && selectedListing && (
           <DetailView
             listing={selectedListing} onBack={() => setView("home")} isFav={favorites.has(selectedListing.id)} toggleFav={toggleFav}
             onReviewAdded={(updated) => {
               setSelectedListing(updated);
               setListings((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
             }}
+            user={user}
+            onRequireAuth={() => { setAuthRedirect("detail"); setView("login"); }}
           />
         )}
         {view === "saved" && <SavedView listings={listings} favorites={favorites} toggleFav={toggleFav} onOpenListing={openListing} />}
