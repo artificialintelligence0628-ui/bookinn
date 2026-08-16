@@ -722,12 +722,18 @@ function ContactModal({ listing, roomType, onClose }) {
     name: "", phone: "", email: "", moveIn: "",
     message: `Hi, I'm interested in ${listing.name}${roomType ? ` (${roomType})` : ""}. Is it still available?`,
   });
-
   const ownerWhatsappDigits = toWhatsappDigits(listing.ownerWhatsapp);
   const mailLink = listing.ownerEmail ? `mailto:${listing.ownerEmail}?subject=${encodeURIComponent("Inquiry: " + listing.name)}&body=${encodeURIComponent(form.message)}` : null;
 
-  const submitBookingRequest = async (paymentReference) => {
-    const waTab = ownerWhatsappDigits ? window.open("", "_blank") : null;
+  // Popups can only be opened synchronously inside a user gesture (the click
+  // handler that fires them). The old code called window.open() inside
+  // submitBookingRequest, which only runs after Paystack's callback fires
+  // and then after verifyBookingPayment's promise resolves — two async hops
+  // removed from the actual click. Browsers no longer trust that as
+  // user-initiated, so they silently blocked it (inquiry still sent, but
+  // WhatsApp never opened). Fix: open the blank tab up front in payAndSend
+  // (the real click handler) and just redirect it here once ready.
+  const submitBookingRequest = async (paymentReference, waTab) => {
     try {
       await api.sendInquiry({
         listingId: listing.id, name: form.name, phone: form.phone, email: form.email,
@@ -746,7 +752,7 @@ function ContactModal({ listing, roomType, onClose }) {
           `Message: ${form.message}`,
         ].filter(Boolean).join("\n");
         const autoWaLink = `https://wa.me/${ownerWhatsappDigits}?text=${encodeURIComponent(summary)}`;
-        if (waTab) waTab.location.href = autoWaLink;
+        if (waTab && !waTab.closed) waTab.location.href = autoWaLink;
         else window.open(autoWaLink, "_blank", "noopener,noreferrer");
       }
       setSent(true);
@@ -772,6 +778,10 @@ function ContactModal({ listing, roomType, onClose }) {
       return;
     }
     setBusy(true);
+    // Open the tab now, synchronously inside this click handler, so the
+    // browser's popup blocker treats it as user-initiated. It sits on
+    // about:blank until submitBookingRequest redirects it later.
+    const waTab = ownerWhatsappDigits ? window.open("", "_blank") : null;
     const reference = `bookinn_fee_${listing.id}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     const handler = window.PaystackPop.setup({
       key: PAYSTACK_PUBLIC_KEY,
@@ -782,14 +792,13 @@ function ContactModal({ listing, roomType, onClose }) {
       metadata: { listingId: listing.id, roomType, purpose: "booking_fee" },
       callback: (response) => {
         api.verifyBookingPayment(response.reference)
-          .then(() => submitBookingRequest(response.reference))
-          .catch((err) => { setSendError(err.message); setBusy(false); });
+          .then(() => submitBookingRequest(response.reference, waTab))
+          .catch((err) => { if (waTab) waTab.close(); setSendError(err.message); setBusy(false); });
       },
-      onClose: () => setBusy(false),
+      onClose: () => { if (waTab) waTab.close(); setBusy(false); },
     });
     handler.openIframe();
   };
-
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,20,35,0.55)" }} onClick={onClose}>
       <div style={{ background: C.white }} className="rounded-lg max-w-md w-full p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
