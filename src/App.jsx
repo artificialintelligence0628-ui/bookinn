@@ -733,7 +733,7 @@ function ContactModal({ listing, roomType, onClose }) {
   // user-initiated, so they silently blocked it (inquiry still sent, but
   // WhatsApp never opened). Fix: open the blank tab up front in payAndSend
   // (the real click handler) and just redirect it here once ready.
-  const submitBookingRequest = async (paymentReference, waTab) => {
+ const submitBookingRequest = async (paymentReference, waTab) => {
     try {
       await api.sendInquiry({
         listingId: listing.id, name: form.name, phone: form.phone, email: form.email,
@@ -748,7 +748,6 @@ function ContactModal({ listing, roomType, onClose }) {
           form.phone ? `Phone: ${form.phone}` : null,
           form.email ? `Email: ${form.email}` : null,
           form.moveIn ? `Move-in: ${form.moveIn}` : null,
-          `Booking fee: GH₵${BOOKING_FEE_GHS} PAID (ref: ${paymentReference})`,
           `Message: ${form.message}`,
         ].filter(Boolean).join("\n");
         const autoWaLink = `https://wa.me/${ownerWhatsappDigits}?text=${encodeURIComponent(summary)}`;
