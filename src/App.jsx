@@ -720,7 +720,7 @@ function ContactModal({ listing, roomType, onClose }) {
   const [sendError, setSendError] = useState("");
   const [form, setForm] = useState({
     name: "", phone: "", email: "", moveIn: "",
-    message: `Hi, I'm interested in ${listing.name}${roomType ? ` (${roomType})` : ""}. Is it still available?`,
+   message: `Hi, I saw ${listing.name}${roomType ? ` (${roomType})` : ""} on BookInn and I'm interested. Is it still available?`,
   });
   const ownerWhatsappDigits = toWhatsappDigits(listing.ownerWhatsapp);
   const mailLink = listing.ownerEmail ? `mailto:${listing.ownerEmail}?subject=${encodeURIComponent("Inquiry: " + listing.name)}&body=${encodeURIComponent(form.message)}` : null;
