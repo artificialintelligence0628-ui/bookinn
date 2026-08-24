@@ -331,4 +331,380 @@ async getInquiries() {
     );
     return mapInquiry(rows[0]);
   },
+
+  // ---- Email & Communication Center ----
+  // Everything below reads/writes the SAME `users` table above — there is no
+  // separate email-address store. Roles are the existing Student/Parent/Owner
+  // values already on the users row.
+  async getUserCountsByRole() {
+    const { rows } = await pool.query(
+      `SELECT role, count(*)::int AS count FROM users WHERE role <> 'Admin' GROUP BY role`
+    );
+    const counts = { Student: 0, Parent: 0, Owner: 0 };
+    let all = 0;
+    for (const r of rows) {
+      if (counts[r.role] !== undefined) counts[r.role] = r.count;
+      all += r.count;
+    }
+    return { all, ...counts };
+  },
+  // Marketing-eligible counts (marketing_emails = true), used for the audience
+  // picker so the admin sees the number of people who will actually receive
+  // an optional/announcement campaign, not just the raw role count.
+  async getMarketingEligibleCountsByRole() {
+    const { rows } = await pool.query(
+      `SELECT role, count(*)::int AS count FROM users WHERE role <> 'Admin' AND marketing_emails = true GROUP BY role`
+    );
+    const counts = { Student: 0, Parent: 0, Owner: 0 };
+    let all = 0;
+    for (const r of rows) {
+      if (counts[r.role] !== undefined) counts[r.role] = r.count;
+      all += r.count;
+    }
+    return { all, ...counts };
+  },
+  // Server-side searchable/paginated user picker for "Selected Users" — never
+  // ships the whole user table to the browser.
+  async searchUsers({ search = "", role = "", limit = 20, offset = 0 } = {}) {
+    const clauses = ["role <> 'Admin'"];
+    const values = [];
+    let i = 1;
+    if (search.trim()) {
+      clauses.push(`(name ILIKE $${i} OR email ILIKE $${i})`);
+      values.push(`%${search.trim()}%`);
+      i += 1;
+    }
+    if (role && role !== "All") {
+      clauses.push(`role = $${i}`);
+      values.push(role);
+      i += 1;
+    }
+    const where = `WHERE ${clauses.join(" AND ")}`;
+    const { rows: countRows } = await pool.query(`SELECT count(*)::int AS count FROM users ${where}`, values);
+    values.push(limit, offset);
+    const { rows } = await pool.query(
+      `SELECT id, name, email, role, marketing_emails FROM users ${where} ORDER BY name ASC LIMIT $${i} OFFSET $${i + 1}`,
+      values
+    );
+    return { total: countRows[0]?.count || 0, users: rows.map((r) => ({ id: r.id, name: r.name, email: r.email, role: r.role, marketingEmails: r.marketing_emails })) };
+  },
+  async getUsersByIds(ids) {
+    if (!ids || !ids.length) return [];
+    const { rows } = await pool.query(
+      `SELECT id, name, email, role, marketing_emails FROM users WHERE id = ANY($1::int[]) AND role <> 'Admin'`,
+      [ids]
+    );
+    return rows.map((r) => ({ id: r.id, name: r.name, email: r.email, role: r.role, marketingEmails: r.marketing_emails }));
+  },
+  async getUsersByRole(role, { marketingOnly = false } = {}) {
+    const clauses = ["role = $1"];
+    const values = [role];
+    if (marketingOnly) clauses.push("marketing_emails = true");
+    const { rows } = await pool.query(
+      `SELECT id, name, email, role, marketing_emails FROM users WHERE ${clauses.join(" AND ")}`,
+      values
+    );
+    return rows.map((r) => ({ id: r.id, name: r.name, email: r.email, role: r.role, marketingEmails: r.marketing_emails }));
+  },
+  async getAllNonAdminUsers({ marketingOnly = false } = {}) {
+    const clauses = ["role <> 'Admin'"];
+    if (marketingOnly) clauses.push("marketing_emails = true");
+    const { rows } = await pool.query(
+      `SELECT id, name, email, role, marketing_emails FROM users WHERE ${clauses.join(" AND ")}`
+    );
+    return rows.map((r) => ({ id: r.id, name: r.name, email: r.email, role: r.role, marketingEmails: r.marketing_emails }));
+  },
+  async setMarketingPreference(userId, marketingEmails) {
+    const { rows } = await pool.query(
+      "UPDATE users SET marketing_emails = $1 WHERE id = $2 RETURNING *",
+      [marketingEmails, userId]
+    );
+    return mapUser(rows[0]);
+  },
+
+  // ---- email templates ----
+  async getEmailTemplates() {
+    const { rows } = await pool.query("SELECT * FROM email_templates ORDER BY id ASC");
+    return rows.map(mapEmailTemplate);
+  },
+  async getEmailTemplateById(id) {
+    const { rows } = await pool.query("SELECT * FROM email_templates WHERE id = $1", [id]);
+    return mapEmailTemplate(rows[0]);
+  },
+  async createEmailTemplate({ name, subject, content, category, createdBy }) {
+    const { rows } = await pool.query(
+      `INSERT INTO email_templates (name, subject, content, category, created_by)
+       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+      [name, subject || "", content || "", category || "General", createdBy || null]
+    );
+    return mapEmailTemplate(rows[0]);
+  },
+  async updateEmailTemplate(id, patch) {
+    const cols = { name: "name", subject: "subject", content: "content", category: "category" };
+    const sets = [];
+    const values = [];
+    let i = 1;
+    for (const [key, col] of Object.entries(cols)) {
+      if (patch[key] === undefined) continue;
+      sets.push(`${col} = $${i}`);
+      values.push(patch[key]);
+      i += 1;
+    }
+    sets.push(`updated_at = now()`);
+    if (!sets.length) return this.getEmailTemplateById(id);
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE email_templates SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
+      values
+    );
+    return mapEmailTemplate(rows[0]);
+  },
+  async deleteEmailTemplate(id) {
+    const { rowCount } = await pool.query("DELETE FROM email_templates WHERE id = $1", [id]);
+    return rowCount > 0;
+  },
+
+  // ---- email campaigns ----
+  async createEmailCampaign(c) {
+    const { rows } = await pool.query(
+      `INSERT INTO email_campaigns
+        (subject, content, audience_type, selected_user_ids, template_id, status,
+         recipient_count, created_by, created_by_name, scheduled_at, idempotency_key)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+       RETURNING *`,
+      [
+        c.subject || "", c.content || "", c.audienceType || "all",
+        JSON.stringify(c.selectedUserIds || []), c.templateId || null, c.status || "draft",
+        c.recipientCount || 0, c.createdBy || null, c.createdByName || null,
+        c.scheduledAt || null, c.idempotencyKey || null,
+      ]
+    );
+    return mapEmailCampaign(rows[0]);
+  },
+  async getEmailCampaignByIdempotencyKey(key) {
+    if (!key) return null;
+    const { rows } = await pool.query("SELECT * FROM email_campaigns WHERE idempotency_key = $1", [key]);
+    return mapEmailCampaign(rows[0]);
+  },
+  async getEmailCampaignById(id) {
+    const { rows } = await pool.query("SELECT * FROM email_campaigns WHERE id = $1", [id]);
+    return mapEmailCampaign(rows[0]);
+  },
+  async updateEmailCampaign(id, patch) {
+    const cols = {
+      subject: "subject", content: "content", audienceType: "audience_type",
+      status: "status", recipientCount: "recipient_count", sentCount: "sent_count",
+      deliveredCount: "delivered_count", failedCount: "failed_count",
+      scheduledAt: "scheduled_at", sentAt: "sent_at", error: "error",
+    };
+    const jsonbFields = new Set(["selectedUserIds"]);
+    const sets = [];
+    const values = [];
+    let i = 1;
+    for (const [key, col] of Object.entries(cols)) {
+      if (patch[key] === undefined) continue;
+      sets.push(`${col} = $${i}`);
+      values.push(patch[key]);
+      i += 1;
+    }
+    if (patch.selectedUserIds !== undefined) {
+      sets.push(`selected_user_ids = $${i}`);
+      values.push(JSON.stringify(patch.selectedUserIds));
+      i += 1;
+    }
+    sets.push(`updated_at = now()`);
+    if (!sets.length) return this.getEmailCampaignById(id);
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE email_campaigns SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
+      values
+    );
+    return mapEmailCampaign(rows[0]);
+  },
+  async deleteEmailCampaign(id) {
+    const { rowCount } = await pool.query("DELETE FROM email_campaigns WHERE id = $1 AND status = 'draft'", [id]);
+    return rowCount > 0;
+  },
+  async getEmailCampaigns({ search = "", status = "", audience = "", createdBy = "", excludeDrafts = false, limit = 20, offset = 0 } = {}) {
+    const clauses = [];
+    const values = [];
+    let i = 1;
+    if (search.trim()) {
+      clauses.push(`subject ILIKE $${i}`);
+      values.push(`%${search.trim()}%`);
+      i += 1;
+    }
+    if (status) {
+      clauses.push(`status = $${i}`);
+      values.push(status);
+      i += 1;
+    }
+    if (audience) {
+      clauses.push(`audience_type = $${i}`);
+      values.push(audience);
+      i += 1;
+    }
+    if (createdBy) {
+      clauses.push(`created_by = $${i}`);
+      values.push(Number(createdBy));
+      i += 1;
+    }
+    if (excludeDrafts) clauses.push(`status <> 'draft'`);
+    const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
+    const { rows: countRows } = await pool.query(`SELECT count(*)::int AS count FROM email_campaigns ${where}`, values);
+    values.push(limit, offset);
+    const { rows } = await pool.query(
+      `SELECT * FROM email_campaigns ${where} ORDER BY id DESC LIMIT $${i} OFFSET $${i + 1}`,
+      values
+    );
+    return { total: countRows[0]?.count || 0, campaigns: rows.map(mapEmailCampaign) };
+  },
+  async getDueScheduledCampaigns() {
+    const { rows } = await pool.query(
+      `SELECT * FROM email_campaigns WHERE status = 'scheduled' AND scheduled_at <= now()`
+    );
+    return rows.map(mapEmailCampaign);
+  },
+  async getEmailDashboardStats() {
+    const { rows: totals } = await pool.query(
+      `SELECT
+         COALESCE(SUM(sent_count),0)::int AS sent,
+         COALESCE(SUM(delivered_count),0)::int AS delivered,
+         COALESCE(SUM(failed_count),0)::int AS failed
+       FROM email_campaigns WHERE status <> 'draft'`
+    );
+    const { rows: monthRows } = await pool.query(
+      `SELECT COALESCE(SUM(sent_count),0)::int AS sent
+       FROM email_campaigns
+       WHERE status <> 'draft' AND sent_at >= date_trunc('month', now())`
+    );
+    return {
+      totalSent: totals[0]?.sent || 0,
+      totalDelivered: totals[0]?.delivered || 0,
+      totalFailed: totals[0]?.failed || 0,
+      sentThisMonth: monthRows[0]?.sent || 0,
+    };
+  },
+
+  // ---- email recipients ----
+  async addEmailRecipients(campaignId, recipients) {
+    if (!recipients.length) return [];
+    const values = [];
+    const placeholders = recipients.map((r, idx) => {
+      const base = idx * 4;
+      values.push(campaignId, r.userId || null, r.name || null, r.email);
+      return `($${base + 1},$${base + 2},$${base + 3},$${base + 4})`;
+    });
+    const { rows } = await pool.query(
+      `INSERT INTO email_recipients (campaign_id, user_id, name, email) VALUES ${placeholders.join(",")} RETURNING *`,
+      values
+    );
+    return rows.map(mapEmailRecipient);
+  },
+  async updateEmailRecipient(id, patch) {
+    const cols = {
+      status: "status", providerMessageId: "provider_message_id", error: "error",
+      sentAt: "sent_at", deliveredAt: "delivered_at", openedAt: "opened_at", clickedAt: "clicked_at",
+    };
+    const sets = [];
+    const values = [];
+    let i = 1;
+    for (const [key, col] of Object.entries(cols)) {
+      if (patch[key] === undefined) continue;
+      sets.push(`${col} = $${i}`);
+      values.push(patch[key]);
+      i += 1;
+    }
+    if (!sets.length) return null;
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE email_recipients SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
+      values
+    );
+    return mapEmailRecipient(rows[0]);
+  },
+  async getEmailRecipientByMessageId(providerMessageId) {
+    const { rows } = await pool.query("SELECT * FROM email_recipients WHERE provider_message_id = $1", [providerMessageId]);
+    return mapEmailRecipient(rows[0]);
+  },
+  async updateEmailRecipientByMessageId(providerMessageId, patch) {
+    const cols = { status: "status", deliveredAt: "delivered_at", openedAt: "opened_at", clickedAt: "clicked_at", error: "error" };
+    const sets = [];
+    const values = [];
+    let i = 1;
+    for (const [key, col] of Object.entries(cols)) {
+      if (patch[key] === undefined) continue;
+      sets.push(`${col} = $${i}`);
+      values.push(patch[key]);
+      i += 1;
+    }
+    if (!sets.length) return null;
+    values.push(providerMessageId);
+    const { rows } = await pool.query(
+      `UPDATE email_recipients SET ${sets.join(", ")} WHERE provider_message_id = $${i} RETURNING *`,
+      values
+    );
+    return mapEmailRecipient(rows[0]);
+  },
+  async getEmailRecipientsByCampaign(campaignId, { limit = 50, offset = 0 } = {}) {
+    const { rows: countRows } = await pool.query(
+      "SELECT count(*)::int AS count FROM email_recipients WHERE campaign_id = $1",
+      [campaignId]
+    );
+    const { rows } = await pool.query(
+      "SELECT * FROM email_recipients WHERE campaign_id = $1 ORDER BY id ASC LIMIT $2 OFFSET $3",
+      [campaignId, limit, offset]
+    );
+    return { total: countRows[0]?.count || 0, recipients: rows.map(mapEmailRecipient) };
+  },
+  async recalculateCampaignCounts(campaignId) {
+    const { rows } = await pool.query(
+      `SELECT
+         count(*) FILTER (WHERE status IN ('sent','delivered','opened','clicked'))::int AS sent,
+         count(*) FILTER (WHERE status IN ('delivered','opened','clicked'))::int AS delivered,
+         count(*) FILTER (WHERE status IN ('failed','bounced'))::int AS failed
+       FROM email_recipients WHERE campaign_id = $1`,
+      [campaignId]
+    );
+    const { sent, delivered, failed } = rows[0] || { sent: 0, delivered: 0, failed: 0 };
+    const { rows: updated } = await pool.query(
+      `UPDATE email_campaigns SET sent_count = $1, delivered_count = $2, failed_count = $3, updated_at = now() WHERE id = $4 RETURNING *`,
+      [sent, delivered, failed, campaignId]
+    );
+    return mapEmailCampaign(updated[0]);
+  },
 };
+
+function mapEmailTemplate(row) {
+  if (!row) return null;
+  return {
+    id: row.id, name: row.name, subject: row.subject, content: row.content,
+    category: row.category, createdBy: row.created_by,
+    createdAt: row.created_at, updatedAt: row.updated_at,
+  };
+}
+
+function mapEmailCampaign(row) {
+  if (!row) return null;
+  return {
+    id: row.id, subject: row.subject, content: row.content,
+    audienceType: row.audience_type, selectedUserIds: row.selected_user_ids || [],
+    templateId: row.template_id, status: row.status,
+    recipientCount: row.recipient_count, sentCount: row.sent_count,
+    deliveredCount: row.delivered_count, failedCount: row.failed_count,
+    createdBy: row.created_by, createdByName: row.created_by_name,
+    createdAt: row.created_at, updatedAt: row.updated_at,
+    scheduledAt: row.scheduled_at, sentAt: row.sent_at, error: row.error,
+  };
+}
+
+function mapEmailRecipient(row) {
+  if (!row) return null;
+  return {
+    id: row.id, campaignId: row.campaign_id, userId: row.user_id,
+    name: row.name, email: row.email, status: row.status,
+    providerMessageId: row.provider_message_id, error: row.error,
+    sentAt: row.sent_at, deliveredAt: row.delivered_at,
+    openedAt: row.opened_at, clickedAt: row.clicked_at,
+  };
+}

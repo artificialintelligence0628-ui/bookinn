@@ -80,3 +80,68 @@ export async function sendVerificationEmail(to, token) {
     `,
   });
 }
+
+// ---------------------------------------------------------
+// Email & Communication Center — reuses the exact Resend client/config
+// above (`resend`, `FROM`, `FRONTEND_URL`, `sendOrThrow`, `emailConfigured`)
+// instead of creating a second client. Nothing above this point is modified.
+// ---------------------------------------------------------
+
+export { FROM, FRONTEND_URL };
+
+// Generic send used by the campaign sender (server/campaigns.js). Same
+// no-op-if-unconfigured / throw-on-provider-error behavior as the two
+// functions above, so failures surface the same way through index.js's
+// existing try/catch + logging pattern.
+export async function sendEmail({ to, subject, html, replyTo }) {
+  if (!resend) throw new Error("Resend is not configured on the server (RESEND_API_KEY missing).");
+  const payload = { from: FROM, to, subject, html };
+  if (replyTo) payload.reply_to = replyTo;
+  return sendOrThrow(payload);
+}
+
+// Swaps {{name}}, {{email}}, {{role}} (and a couple of convenience aliases)
+// for a specific recipient. Runs server-side only — the composer's frontend
+// preview substitutes sample values just for display, but the values that
+// actually go out are always generated here, per recipient, right before
+// sending.
+export function personalizeContent(content, recipient) {
+  const vars = {
+    name: recipient.name || "there",
+    email: recipient.email || "",
+    role: recipient.role || "",
+  };
+  return String(content || "").replace(/\{\{\s*(name|email|role)\s*\}\}/gi, (_, key) => vars[key.toLowerCase()] ?? "");
+}
+
+// Wraps arbitrary campaign body HTML in BookInn's branded email shell —
+// header wordmark, content area, footer, and (for optional/marketing sends)
+// an unsubscribe line. Every campaign email goes through this one function
+// so the admin never has to design an email from scratch, and so the
+// Preview endpoint renders byte-for-byte the same shell that Send uses.
+export function buildBrandedEmailHtml({ subject, bodyHtml, unsubscribeUrl }) {
+  return `
+    <div style="font-family: Arial, Helvetica, sans-serif; background: #f0f6fc; padding: 24px 0; margin: 0;">
+      <div style="max-width: 560px; margin: 0 auto; background: #ffffff; border-radius: 8px; overflow: hidden; border: 1px solid #e7edf3;">
+        <div style="background: #003580; padding: 20px 28px;">
+          <span style="color: #ffffff; font-size: 20px; font-weight: 800; letter-spacing: 0.2px;">BookInn</span>
+        </div>
+        <div style="padding: 28px; color: #1a1a1a; font-size: 15px; line-height: 1.6;">
+          ${bodyHtml}
+        </div>
+        <div style="padding: 20px 28px; border-top: 1px solid #e7edf3; background: #f8fafc;">
+          <p style="font-size: 12px; color: #6b6b6b; margin: 0 0 6px;">
+            BookInn · Student hostel &amp; apartment booking in Ghana
+          </p>
+          ${unsubscribeUrl
+            ? `<p style="font-size: 12px; color: #98a2b3; margin: 0;">
+                 You're receiving this because you have a BookInn account.
+                 <a href="${unsubscribeUrl}" style="color: #0071c2;">Unsubscribe from announcements</a>
+               </p>`
+            : `<p style="font-size: 12px; color: #98a2b3; margin: 0;">This is a transactional message about your BookInn account.</p>`
+          }
+        </div>
+      </div>
+    </div>
+  `;
+}

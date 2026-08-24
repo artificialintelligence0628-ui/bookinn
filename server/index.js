@@ -11,7 +11,13 @@ import { migrate } from "./db.js";
 import { PLAN_PRICES, PLAN_FEATURES, PLAN_ORDER, maxListingsForView, computeSubscriptionView, reminderForView } from "./plans.js";
 import { uploadBuffer, cloudinaryConfigured } from "./cloudinary.js";
 import crypto from "crypto";
-import { sendPasswordResetEmail, sendVerificationEmail, emailConfigured } from "./email.js";
+import { sendPasswordResetEmail, sendVerificationEmail, emailConfigured, personalizeContent, buildBrandedEmailHtml } from "./email.js";
+import {
+  AUDIENCE_TYPES, resolveAudience, audienceCounts, createAndDispatchCampaign,
+  processCampaign, startScheduler, unsubscribeUrl, verifyUnsubscribeToken,
+} from "./campaigns.js";
+import { seedEmailTemplates } from "./emailTemplateSeeds.js";
+import { verifyResendWebhook, handleResendEvent } from "./resendWebhook.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -29,7 +35,13 @@ const app = express();
 app.use(cors());
 // Listing photos/video now go through the multipart /api/uploads route above and
 // straight to Cloudinary, so JSON bodies are just URLs + text — 1mb is generous.
-app.use(express.json({ limit: "1mb" }));
+// The `verify` hook stashes the raw request body so the Resend webhook route
+// (server/resendWebhook.js) can check its HMAC signature — express.json()
+// only exposes the already-parsed object otherwise.
+app.use(express.json({
+  limit: "1mb",
+  verify: (req, res, buf) => { req.rawBody = buf.toString("utf8"); },
+}));
 
 const ROLES = ["Owner", "Student", "Parent"]; // roles the public signup form is allowed to create
 const ADMIN_ROLE = "Admin"; // never accepted from public /auth/signup — seeded below instead
@@ -146,8 +158,28 @@ const requireAdmin = ah(async (req, res, next) => {
   const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   if (user.role !== ADMIN_ROLE) return res.status(403).json({ error: "Admin access only." });
+  req.adminUser = user;
   next();
 });
+
+// ---------------------------------------------------------
+// Email & Communication Center — small in-memory rate limiter for the
+// send/schedule action (per admin), so a runaway script or a mis-click storm
+// can't fire off many campaigns in a row. This is a single-process app (no
+// Redis in the stack), so an in-memory window is the appropriate weight of
+// protection here — it resets on redeploy, which is acceptable for an
+// action a human admin takes deliberately and rarely.
+const sendAttemptsByAdmin = new Map();
+function checkSendRateLimit(adminId) {
+  const now = Date.now();
+  const windowMs = 60 * 1000;
+  const maxPerWindow = 5;
+  const attempts = (sendAttemptsByAdmin.get(adminId) || []).filter((t) => now - t < windowMs);
+  if (attempts.length >= maxPerWindow) return false;
+  attempts.push(now);
+  sendAttemptsByAdmin.set(adminId, attempts);
+  return true;
+}
 // ---------------------------------------------------------
 // Uploads (Cloudinary)
 // ---------------------------------------------------------
@@ -944,6 +976,282 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
   });
 }));
 
+// ---------------------------------------------------------
+// Email & Communication Center
+// ---------------------------------------------------------
+// Every route below is behind requireAuth + requireAdmin — the same gate
+// already used for the rest of the platform admin panel. There's no separate
+// login/permission system for email; a BookInn Admin account is a BookInn
+// Admin account.
+
+app.get("/api/admin/emails/stats", requireAuth, requireAdmin, ah(async (req, res) => {
+  const [dashboard, { campaigns: recentCampaigns }, eligible, raw] = await Promise.all([
+    store.getEmailDashboardStats(),
+    store.getEmailCampaigns({ excludeDrafts: true, limit: 8, offset: 0 }),
+    audienceCounts(),
+    store.getUserCountsByRole(),
+  ]);
+  res.json({
+    ...dashboard,
+    recentCampaigns,
+    audience: { eligible, total: raw },
+  });
+}));
+
+app.get("/api/admin/emails/audience-counts", requireAuth, requireAdmin, ah(async (req, res) => {
+  const [eligible, raw] = await Promise.all([audienceCounts(), store.getUserCountsByRole()]);
+  res.json({ eligible, total: raw });
+}));
+
+// Searchable/paginated recipient picker for "Selected Users" — never sends
+// the whole user table to the browser, and scales to thousands of users.
+app.get("/api/admin/emails/users", requireAuth, requireAdmin, ah(async (req, res) => {
+  const search = String(req.query.search || "");
+  const role = String(req.query.role || "");
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const result = await store.searchUsers({ search, role, limit, offset: (page - 1) * limit });
+  res.json(result);
+}));
+
+// ---- templates ----
+app.get("/api/admin/emails/templates", requireAuth, requireAdmin, ah(async (req, res) => {
+  const templates = await store.getEmailTemplates();
+  res.json({ templates });
+}));
+
+app.post("/api/admin/emails/templates", requireAuth, requireAdmin, ah(async (req, res) => {
+  const { name, subject, content, category } = req.body || {};
+  if (!name || !name.trim()) return res.status(400).json({ error: "Please enter a template name." });
+  const template = await store.createEmailTemplate({ name: name.trim(), subject, content, category, createdBy: req.user.sub });
+  res.status(201).json({ template });
+}));
+
+app.put("/api/admin/emails/templates/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const existing = await store.getEmailTemplateById(req.params.id);
+  if (!existing) return res.status(404).json({ error: "Template not found." });
+  const { name, subject, content, category } = req.body || {};
+  const template = await store.updateEmailTemplate(req.params.id, { name, subject, content, category });
+  res.json({ template });
+}));
+
+app.delete("/api/admin/emails/templates/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const ok = await store.deleteEmailTemplate(req.params.id);
+  if (!ok) return res.status(404).json({ error: "Template not found." });
+  res.json({ message: "Template deleted." });
+}));
+
+// Renders the exact branded shell + personalization a recipient would get,
+// using the signed-in admin's own name/email/role as the sample values —
+// what you see in Preview is what Send actually produces, not a mock-up.
+app.post("/api/admin/emails/preview", requireAuth, requireAdmin, ah(async (req, res) => {
+  const { subject, content } = req.body || {};
+  if (subject === undefined || content === undefined) {
+    return res.status(400).json({ error: "Subject and content are required." });
+  }
+  const sample = { name: req.adminUser.name, email: req.adminUser.email, role: "Student" };
+  const personalizedSubject = personalizeContent(subject || "", sample);
+  const personalizedBody = personalizeContent(content || "", sample);
+  const html = buildBrandedEmailHtml({
+    subject: personalizedSubject,
+    bodyHtml: personalizedBody || "<p></p>",
+    unsubscribeUrl: unsubscribeUrl(req.adminUser.id),
+  });
+  res.json({ subject: personalizedSubject, html, sample });
+}));
+
+// ---- campaigns: history / detail ----
+app.get("/api/admin/emails/campaigns", requireAuth, requireAdmin, ah(async (req, res) => {
+  const { search = "", status = "", audience = "", createdBy = "" } = req.query;
+  const limit = Math.min(Number(req.query.limit) || 20, 100);
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const result = await store.getEmailCampaigns({
+    search: String(search), status: String(status), audience: String(audience), createdBy: String(createdBy),
+    limit, offset: (page - 1) * limit,
+  });
+  res.json(result);
+}));
+
+app.get("/api/admin/emails/campaigns/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const campaign = await store.getEmailCampaignById(req.params.id);
+  if (!campaign) return res.status(404).json({ error: "Campaign not found." });
+  res.json({ campaign });
+}));
+
+app.get("/api/admin/emails/campaigns/:id/recipients", requireAuth, requireAdmin, ah(async (req, res) => {
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+  const page = Math.max(Number(req.query.page) || 1, 1);
+  const result = await store.getEmailRecipientsByCampaign(req.params.id, { limit, offset: (page - 1) * limit });
+  res.json(result);
+}));
+
+// Shared validation for creating/sending a campaign.
+function validateCampaignInput({ subject, content, audienceType, selectedUserIds, action }) {
+  if (action !== "draft") {
+    if (!subject || !subject.trim()) return "Please enter an email subject.";
+    if (!content || !content.trim()) return "Please write a message before sending.";
+  }
+  if (audienceType && !AUDIENCE_TYPES.includes(audienceType)) return "Please choose a valid audience.";
+  if (audienceType === "selected" && action !== "draft" && (!Array.isArray(selectedUserIds) || !selectedUserIds.length)) {
+    return "Please select at least one recipient.";
+  }
+  return null;
+}
+
+// Creates a campaign. `action` is "draft" | "schedule" | "send" — the
+// browser only ever asks for one of these three things; recipients are
+// always resolved from the live database here, not sent from the client.
+app.post("/api/admin/emails/campaigns", requireAuth, requireAdmin, ah(async (req, res) => {
+  const { subject, content, audienceType = "all", selectedUserIds = [], templateId, action = "draft", scheduledAt, idempotencyKey } = req.body || {};
+
+  const validationError = validateCampaignInput({ subject, content, audienceType, selectedUserIds, action });
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  if (action === "schedule" && (!scheduledAt || new Date(scheduledAt).getTime() <= Date.now())) {
+    return res.status(400).json({ error: "Please choose a future date and time to schedule this email." });
+  }
+
+  if (action === "send" && !checkSendRateLimit(req.user.sub)) {
+    return res.status(429).json({ error: "Too many campaigns sent in a short time. Please wait a minute and try again." });
+  }
+
+  try {
+    const { campaign, duplicate } = await createAndDispatchCampaign({
+      subject: subject || "", content: content || "", audienceType, selectedUserIds,
+      templateId, action, scheduledAt: scheduledAt ? new Date(scheduledAt) : null,
+      createdBy: req.user.sub, createdByName: req.adminUser.name,
+      idempotencyKey: idempotencyKey || null,
+    });
+    if (duplicate) return res.status(200).json({ campaign, message: "This campaign was already submitted." });
+    res.status(201).json({ campaign });
+  } catch (err) {
+    console.error("Failed to create campaign:", err);
+    res.status(500).json({ error: "We couldn't send this campaign. Please try again." });
+  }
+}));
+
+// Edits a draft (subject/content/audience/template) before it's sent.
+app.put("/api/admin/emails/campaigns/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const existing = await store.getEmailCampaignById(req.params.id);
+  if (!existing) return res.status(404).json({ error: "Campaign not found." });
+  if (existing.status !== "draft") return res.status(400).json({ error: "Only draft campaigns can be edited this way." });
+
+  const { subject, content, audienceType, selectedUserIds, templateId } = req.body || {};
+  const validationError = validateCampaignInput({ subject, content, audienceType, selectedUserIds, action: "draft" });
+  if (validationError) return res.status(400).json({ error: validationError });
+
+  let recipientCount = existing.recipientCount;
+  if (audienceType) {
+    const recipients = await resolveAudience(audienceType, selectedUserIds);
+    recipientCount = recipients.length;
+  }
+
+  const campaign = await store.updateEmailCampaign(req.params.id, {
+    subject, content, audienceType,
+    selectedUserIds: audienceType === "selected" ? (selectedUserIds || []).map(Number) : undefined,
+    recipientCount,
+  });
+  res.json({ campaign });
+}));
+
+// Sends (or schedules) an existing draft/scheduled campaign — used from the
+// Drafts and Scheduled lists. Recipients are re-resolved fresh at this
+// moment (not reused from when the draft was first saved), and the
+// idempotency guard + rate limit apply exactly as they do on create.
+app.post("/api/admin/emails/campaigns/:id/send", requireAuth, requireAdmin, ah(async (req, res) => {
+  const existing = await store.getEmailCampaignById(req.params.id);
+  if (!existing) return res.status(404).json({ error: "Campaign not found." });
+  if (!["draft", "scheduled", "cancelled"].includes(existing.status)) {
+    return res.status(400).json({ error: "This campaign has already been sent or is currently sending." });
+  }
+  const { action = "send", scheduledAt, idempotencyKey } = req.body || {};
+
+  if (!existing.subject?.trim()) return res.status(400).json({ error: "Please enter an email subject." });
+  if (!existing.content?.trim()) return res.status(400).json({ error: "Please write a message before sending." });
+
+  if (existing.audienceType === "selected" && !(existing.selectedUserIds || []).length) {
+    return res.status(400).json({ error: "Please select at least one recipient." });
+  }
+
+  if (action === "schedule" && (!scheduledAt || new Date(scheduledAt).getTime() <= Date.now())) {
+    return res.status(400).json({ error: "Please choose a future date and time to schedule this email." });
+  }
+
+  if (action === "send" && !checkSendRateLimit(req.user.sub)) {
+    return res.status(429).json({ error: "Too many campaigns sent in a short time. Please wait a minute and try again." });
+  }
+
+  if (idempotencyKey) {
+    const dup = await store.getEmailCampaignByIdempotencyKey(idempotencyKey);
+    if (dup && dup.id !== existing.id) return res.status(200).json({ campaign: dup, message: "This campaign was already submitted." });
+  }
+
+  const recipients = await resolveAudience(existing.audienceType, existing.selectedUserIds);
+  if (!recipients.length) return res.status(400).json({ error: "Please select at least one recipient." });
+
+  if (action === "schedule") {
+    const campaign = await store.updateEmailCampaign(existing.id, {
+      status: "scheduled", scheduledAt: new Date(scheduledAt), recipientCount: recipients.length,
+    });
+    return res.json({ campaign });
+  }
+
+  await store.updateEmailCampaign(existing.id, { status: "queued", recipientCount: recipients.length });
+  await store.addEmailRecipients(existing.id, recipients.map((r) => ({ userId: r.id, name: r.name, email: r.email })));
+  processCampaign(existing.id).catch((err) => console.error(`Campaign ${existing.id} failed to process:`, err));
+
+  const campaign = await store.getEmailCampaignById(existing.id);
+  res.status(202).json({ campaign });
+}));
+
+app.post("/api/admin/emails/campaigns/:id/cancel", requireAuth, requireAdmin, ah(async (req, res) => {
+  const existing = await store.getEmailCampaignById(req.params.id);
+  if (!existing) return res.status(404).json({ error: "Campaign not found." });
+  if (!["scheduled", "queued"].includes(existing.status)) {
+    return res.status(400).json({ error: "Only scheduled or queued campaigns can be cancelled." });
+  }
+  const campaign = await store.updateEmailCampaign(existing.id, { status: "cancelled" });
+  res.json({ campaign });
+}));
+
+app.delete("/api/admin/emails/campaigns/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const ok = await store.deleteEmailCampaign(req.params.id);
+  if (!ok) return res.status(400).json({ error: "Only draft campaigns can be deleted." });
+  res.json({ message: "Draft deleted." });
+}));
+
+// ---------------------------------------------------------
+// Public: unsubscribe link (clicked from inside an email, so it's a plain
+// GET landed on directly in the browser, not an API call from the SPA) and
+// the Resend delivery-event webhook.
+// ---------------------------------------------------------
+app.get("/api/emails/unsubscribe", ah(async (req, res) => {
+  const uid = Number(req.query.uid);
+  const token = String(req.query.token || "");
+  const page = (title, message) => `
+    <div style="font-family: Arial, sans-serif; max-width: 480px; margin: 60px auto; text-align: center; color: #1a1a1a;">
+      <h2 style="color: #003580;">${title}</h2>
+      <p style="color: #6b6b6b;">${message}</p>
+    </div>`;
+  if (!uid || !verifyUnsubscribeToken(uid, token)) {
+    return res.status(400).send(page("Link invalid or expired", "This unsubscribe link isn't valid."));
+  }
+  await store.setMarketingPreference(uid, false);
+  res.send(page("You've been unsubscribed", "You won't receive further announcement emails from BookInn. You'll still receive essential account emails like booking confirmations and password resets."));
+}));
+
+app.post("/api/webhooks/resend", ah(async (req, res) => {
+  if (process.env.RESEND_WEBHOOK_SECRET && !verifyResendWebhook(req)) {
+    return res.status(401).json({ error: "Invalid signature." });
+  }
+  try {
+    await handleResendEvent(req.body);
+  } catch (err) {
+    console.error("Failed to process Resend webhook event:", err);
+  }
+  res.status(200).json({ ok: true });
+}));
+
 app.get("/api/health", (req, res) => res.json({ ok: true }));
 
 // Serve the built frontend (npm run build → dist/) so this one server handles
@@ -985,9 +1293,11 @@ async function ensureAdminSeeded() {
 
 migrate()
   .then(() => ensureAdminSeeded())
+  .then(() => seedEmailTemplates(store))
   .then(() => {
     app.listen(PORT, () => {
       console.log(`BookInn API listening on http://localhost:${PORT}`);
+      startScheduler();
     });
   })
   .catch((err) => {
