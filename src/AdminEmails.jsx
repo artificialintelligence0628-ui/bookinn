@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { api } from "./api.js";
-import { C, DataTable, AdminStatCard, RoleBadge, PrimaryButton, GhostButton } from "./App.jsx";
+import { C } from "./theme.js";
+import { DataTable, AdminStatCard, RoleBadge, PrimaryButton, GhostButton } from "./adminUI.jsx";
 import {
   Mail, Send, FileText, Clock, Edit3, Plus, Trash2, X, Search,
   Users, GraduationCap, UserCog, Building2, Eye, RefreshCw, Loader2,
