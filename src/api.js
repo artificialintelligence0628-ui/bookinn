@@ -66,4 +66,25 @@ export const api = {
   getAdminUsers: (token) => request("/admin/users", { token }),
   impersonateUser: (id, token) => request(`/admin/users/${id}/impersonate`, { method: "POST", token }),
   getAdminStats: (token) => request("/admin/stats", { token }),
+
+  // Email & Communication Center (Platform Admin only)
+  getEmailStats: (token) => request("/admin/emails/stats", { token }),
+  getEmailAudienceCounts: (token) => request("/admin/emails/audience-counts", { token }),
+  searchEmailUsers: ({ search = "", role = "", page = 1, limit = 20 }, token) =>
+    request(`/admin/emails/users?search=${encodeURIComponent(search)}&role=${encodeURIComponent(role)}&page=${page}&limit=${limit}`, { token }),
+  getEmailTemplates: (token) => request("/admin/emails/templates", { token }),
+  createEmailTemplate: (payload, token) => request("/admin/emails/templates", { method: "POST", body: payload, token }),
+  updateEmailTemplate: (id, payload, token) => request(`/admin/emails/templates/${id}`, { method: "PUT", body: payload, token }),
+  deleteEmailTemplate: (id, token) => request(`/admin/emails/templates/${id}`, { method: "DELETE", token }),
+  previewEmail: (payload, token) => request("/admin/emails/preview", { method: "POST", body: payload, token }),
+  getEmailCampaigns: ({ search = "", status = "", audience = "", page = 1, limit = 20 } = {}, token) =>
+    request(`/admin/emails/campaigns?search=${encodeURIComponent(search)}&status=${encodeURIComponent(status)}&audience=${encodeURIComponent(audience)}&page=${page}&limit=${limit}`, { token }),
+  getEmailCampaign: (id, token) => request(`/admin/emails/campaigns/${id}`, { token }),
+  getEmailCampaignRecipients: (id, { page = 1, limit = 50 } = {}, token) =>
+    request(`/admin/emails/campaigns/${id}/recipients?page=${page}&limit=${limit}`, { token }),
+  createEmailCampaign: (payload, token) => request("/admin/emails/campaigns", { method: "POST", body: payload, token }),
+  updateEmailCampaign: (id, payload, token) => request(`/admin/emails/campaigns/${id}`, { method: "PUT", body: payload, token }),
+  sendEmailCampaign: (id, payload, token) => request(`/admin/emails/campaigns/${id}/send`, { method: "POST", body: payload, token }),
+  cancelEmailCampaign: (id, token) => request(`/admin/emails/campaigns/${id}/cancel`, { method: "POST", token }),
+  deleteEmailCampaign: (id, token) => request(`/admin/emails/campaigns/${id}`, { method: "DELETE", token }),
 };

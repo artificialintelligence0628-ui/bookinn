@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { api } from "./api.js";
+import PlatformAdminEmails from "./AdminEmails.jsx";
 import {
   Search, MapPin, Star, Wifi, Droplet, Zap, UtensilsCrossed, ShieldCheck,
   Car, Heart, X, Menu, Phone, Mail, MessageCircle, PlayCircle, ChevronLeft,
@@ -14,7 +15,7 @@ import {
 /* ---------------------------------------------------------
    TOKENS — booking.com inspired blue & white system
 --------------------------------------------------------- */
-const C = {
+export const C = {
   navy: "#003580",      // header / deep brand blue
   blue: "#0071c2",      // primary CTA blue
   blueHover: "#00487a",
@@ -170,7 +171,7 @@ function ScoreBadge({ score, size = "md" }) {
   );
 }
 
-function Badge({ children, tone = "blue" }) {
+export function Badge({ children, tone = "blue" }) {
   const styles = {
     blue: { background: C.blueLight, color: C.navy },
     yellow: { background: "#fff6dc", color: C.yellowDark },
@@ -184,7 +185,7 @@ function Badge({ children, tone = "blue" }) {
   );
 }
 
-function PrimaryButton({ children, onClick, full, style, ...rest }) {
+export function PrimaryButton({ children, onClick, full, style, ...rest }) {
   return (
     <button
       onClick={onClick}
@@ -197,7 +198,7 @@ function PrimaryButton({ children, onClick, full, style, ...rest }) {
   );
 }
 
-function GhostButton({ children, onClick, full, style, ...rest }) {
+export function GhostButton({ children, onClick, full, style, ...rest }) {
   return (
     <button
       onClick={onClick}
@@ -3001,7 +3002,7 @@ function Footer({ setView, onOwnerDashboardClick, onListPropertyClick }) {
    so even someone who finds the URL can't get in without an
    Admin login.
 --------------------------------------------------------- */
-function AdminStatCard({ label, value, icon: Icon }) {
+export function AdminStatCard({ label, value, icon: Icon }) {
   return (
     <div style={{ borderColor: C.border }} className="border rounded-lg p-3 sm:p-4 bg-white min-w-0">
       <Icon size={18} color={C.blue} className="mb-2 shrink-0" />
@@ -3011,7 +3012,7 @@ function AdminStatCard({ label, value, icon: Icon }) {
   );
 }
 
-function DataTable({ columns, rows, emptyLabel }) {
+export function DataTable({ columns, rows, emptyLabel }) {
   if (!rows.length) {
     return (
       <div style={{ borderColor: C.border, color: C.gray600 }} className="border rounded-lg p-8 text-center text-sm bg-white">
@@ -3047,7 +3048,7 @@ function DataTable({ columns, rows, emptyLabel }) {
   );
 }
 
-function RoleBadge({ role }) {
+export function RoleBadge({ role }) {
   const colors = {
     Student: { bg: "#e6f2fb", fg: C.blue },
     Parent: { bg: "#fff4e0", fg: "#8a6300" },
@@ -3082,6 +3083,7 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "owners", label: "Owners" },
     { key: "listings", label: "Listings" },
     { key: "inquiries", label: "Inquiries" },
+    { key: "emails", label: "Emails" },
   ];
   const [tab, setTab] = useState("overview");
   const [stats, setStats] = useState(null);
@@ -3347,7 +3349,7 @@ function PlatformAdminView({ token, onManageOwner }) {
             </>
           )}
 
-          {tab !== "overview" && tab !== "revenue" && (
+          {tab !== "overview" && tab !== "revenue" && tab !== "emails" && (
             <div className="relative mb-4 max-w-sm">
               <Search size={16} style={{ color: C.gray400 }} className="absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -3375,6 +3377,7 @@ function PlatformAdminView({ token, onManageOwner }) {
         {tab === "inquiries" && (
             <DataTable columns={inquiryColumns} rows={filteredInquiries} emptyLabel="No inquiries yet." />
           )}
+          {tab === "emails" && <PlatformAdminEmails token={token} />}
         </>
       )}
 
