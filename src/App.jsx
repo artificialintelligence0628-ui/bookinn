@@ -797,6 +797,12 @@ function ContactModal({ listing, roomType, onClose }) {
             <p style={{ color: C.navy }} className="font-semibold text-sm">
               Booking fee paid and inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
             </p>
+           {sent ? (
+          <div style={{ background: C.blueLight }} className="rounded-md p-4 text-center">
+            <Check className="mx-auto mb-2" color={C.navy} />
+            <p style={{ color: C.navy }} className="font-semibold text-sm">
+              Booking fee paid and inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
+            </p>
             {sentWaLink && (
               
                 href={sentWaLink}
@@ -808,6 +814,8 @@ function ContactModal({ listing, roomType, onClose }) {
                 <MessageCircle size={16} /> WhatsApp didn't open? Tap here
               </a>
             )}
+          </div>
+        ) : (
           </div>
         ) : (
           <>
