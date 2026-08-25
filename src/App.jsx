@@ -59,6 +59,18 @@ function toWhatsappDigits(raw) {
   if (digits.startsWith("0")) return "233" + digits.slice(1);
   return "233" + digits;
 }
+// Mobile browsers (and the in-app popup Paystack itself opens) are far
+// stricter than desktop about treating a window.open() as "user-initiated"
+// once any async hop (payment callback, promise) sits between the click and
+// the open/redirect. The pre-opened-blank-tab trick below is kept for
+// desktop, but on mobile we skip it entirely and just navigate the current
+// tab straight to WhatsApp — a same-tab navigation is never subject to
+// popup-blocking rules, so it's the one approach that's reliable everywhere.
+function isMobileDevice() {
+  if (typeof navigator === "undefined") return false;
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
+}
+
 const PRICING_PERIODS = ["Per semester", "Per both semesters", "Per year"];
 
 const AMENITY_ICONS = {
@@ -665,9 +677,10 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading }) {
   const BOOKING_FEE_GHS = 5;
 
 function ContactModal({ listing, roomType, onClose }) {
-  const [sent, setSent] = useState(false);
+   const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState("");
+  const [sentWaLink, setSentWaLink] = useState("");
   const [form, setForm] = useState({
     name: "", phone: "", email: "", moveIn: "",
    message: `Hi, I saw ${listing.name}${roomType ? ` (${roomType})` : ""} on BookInn and I'm interested. Is it still available?`,
@@ -683,7 +696,19 @@ function ContactModal({ listing, roomType, onClose }) {
   // user-initiated, so they silently blocked it (inquiry still sent, but
   // WhatsApp never opened). Fix: open the blank tab up front in payAndSend
   // (the real click handler) and just redirect it here once ready.
- const submitBookingRequest = async (paymentReference, waTab) => {
+  // Popups can only be opened synchronously inside a user gesture (the click
+  // handler that fires them). The old code called window.open() inside
+  // submitBookingRequest, which only runs after Paystack's callback fires
+  // and then after verifyBookingPayment's promise resolves — two async hops
+  // removed from the actual click. Desktop browsers still honor a blank tab
+  // that was pre-opened synchronously and redirected later, so that trick is
+  // kept for desktop. Mobile browsers are stricter (and Paystack's own popup
+  // adds another gesture hop), so the pre-opened tab is unreliable there —
+  // on mobile we instead navigate the CURRENT tab straight to WhatsApp,
+  // which is a plain page navigation, not a popup, so it's never blocked.
+  const isMobile = isMobileDevice();
+
+  const submitBookingRequest = async (paymentReference, waTab) => {
     try {
       await api.sendInquiry({
         listingId: listing.id, name: form.name, phone: form.phone, email: form.email,
@@ -701,6 +726,16 @@ function ContactModal({ listing, roomType, onClose }) {
           `Message: ${form.message}`,
         ].filter(Boolean).join("\n");
         const autoWaLink = `https://wa.me/${ownerWhatsappDigits}?text=${encodeURIComponent(summary)}`;
+        setSentWaLink(autoWaLink);
+        if (isMobile) {
+          // Same-tab navigation — always allowed, and on a phone this hands
+          // straight off to the WhatsApp app just like a normal wa.me link.
+          // sentWaLink above also powers a manual fallback button in the
+          // "sent" view, in case a particular in-app browser still blocks it.
+          setSent(true);
+          setTimeout(() => { window.location.href = autoWaLink; }, 400);
+          return;
+        }
         if (waTab && !waTab.closed) waTab.location.href = autoWaLink;
         else window.open(autoWaLink, "_blank", "noopener,noreferrer");
       }
@@ -730,7 +765,8 @@ function ContactModal({ listing, roomType, onClose }) {
     // Open the tab now, synchronously inside this click handler, so the
     // browser's popup blocker treats it as user-initiated. It sits on
     // about:blank until submitBookingRequest redirects it later.
-    const waTab = ownerWhatsappDigits ? window.open("", "_blank") : null;
+    // Skipped on mobile — see the comment in submitBookingRequest above.
+    const waTab = (ownerWhatsappDigits && !isMobile) ? window.open("", "_blank") : null;
     const reference = `bookinn_fee_${listing.id}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
     const handler = window.PaystackPop.setup({
       key: PAYSTACK_PUBLIC_KEY,
@@ -755,12 +791,23 @@ function ContactModal({ listing, roomType, onClose }) {
         <h3 style={{ color: C.ink }} className="font-bold text-lg mb-1">Contact about this room</h3>
         <p style={{ color: C.gray600 }} className="text-sm mb-4">{listing.name}{roomType ? ` · ${roomType}` : ""}</p>
 
-        {sent ? (
+               {sent ? (
           <div style={{ background: C.blueLight }} className="rounded-md p-4 text-center">
             <Check className="mx-auto mb-2" color={C.navy} />
             <p style={{ color: C.navy }} className="font-semibold text-sm">
               Booking fee paid and inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
             </p>
+            {sentWaLink && (
+              
+                href={sentWaLink}
+                target={isMobile ? undefined : "_blank"}
+                rel="noopener noreferrer"
+                style={{ background: C.blue }}
+                className="mt-3 inline-flex items-center justify-center gap-1.5 text-white text-sm font-semibold py-2 px-4 rounded-md"
+              >
+                <MessageCircle size={16} /> WhatsApp didn't open? Tap here
+              </a>
+            )}
           </div>
         ) : (
           <>
