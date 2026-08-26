@@ -805,6 +805,8 @@ function ContactModal({ listing, roomType, onClose }) {
             </p>
             {sentWaLink && (
               
+               {sentWaLink && (
+              
                 href={sentWaLink}
                 target={isMobile ? undefined : "_blank"}
                 rel="noopener noreferrer"
