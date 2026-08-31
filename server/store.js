@@ -1,5 +1,4 @@
 import { pool } from "./db.js";
-import { TRIAL_DAYS } from "./plans.js";
 
 // ---------------------------------------------------------
 // Row <-> app-object mapping. Everywhere else in the app (index.js, plans.js)
@@ -221,25 +220,6 @@ export const store = {
     const subscription = { ...user.subscription, status: "cancelled", cancelledAt: new Date().toISOString() };
     const { rows } = await pool.query(
       "UPDATE users SET subscription = $1 WHERE id = $2 RETURNING *",
-      [JSON.stringify(subscription), id]
-    );
-    return mapUser(rows[0]);
-  },
-  async grantFreeTrial(id) {
-    const user = await this.getUserById(id);
-    if (!user) return null;
-    const now = new Date();
-    const endsAt = new Date(now.getTime() + TRIAL_DAYS * 24 * 60 * 60 * 1000);
-    const subscription = {
-      ...user.subscription,
-      tier: null,
-      status: "trial",
-      trialStartedAt: now.toISOString(),
-      trialEndsAt: endsAt.toISOString(),
-      remindersSent: {},
-    };
-    const { rows } = await pool.query(
-      "UPDATE users SET subscription = $1, has_used_free_trial = true WHERE id = $2 RETURNING *",
       [JSON.stringify(subscription), id]
     );
     return mapUser(rows[0]);
