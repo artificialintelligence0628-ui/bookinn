@@ -51,17 +51,11 @@ export const api = {
   resendVerification: (email) => request("/auth/resend-verification", { method: "POST", body: { email } }),
   resetPassword: (token, password) => request("/auth/reset-password", { method: "POST", body: { token, password } }),
   verifyEmail: (token) => request("/auth/verify-email", { method: "POST", body: { token } }),
-  verifyPayment: (reference, tier, token) => request("/payments/verify", { method: "POST", body: { reference, tier }, token }),
  sendInquiry: (payload) => request("/inquiries", { method: "POST", body: payload }),
   getInquiries: (token) => request("/inquiries", { token }),
   setConfirmedResident: (id, confirmed, token) => request(`/inquiries/${id}/confirm`, { method: "PATCH", body: { confirmed }, token }),
-  verifyBookingPayment: (reference) =>
-  request("/bookings/verify-payment", { method: "POST", body: { reference } }),
   getOwnerStats: (token) => request("/owner/stats", { token }),
   getMyListings: (token) => request("/listings/mine", { token }),
-  getMySubscription: (token) => request("/subscription/me", { token }),
-  startFreeTrial: (token) => request("/subscription/start-trial", { method: "POST", token }),
-  cancelSubscription: (token) => request("/subscription/cancel", { method: "POST", token }),
   // Platform admin only (role === "Admin") — site-wide stats and user directory.
   getAdminUsers: (token) => request("/admin/users", { token }),
   impersonateUser: (id, token) => request(`/admin/users/${id}/impersonate`, { method: "POST", token }),

@@ -59,13 +59,13 @@ function toWhatsappDigits(raw) {
   if (digits.startsWith("0")) return "233" + digits.slice(1);
   return "233" + digits;
 }
-// Mobile browsers (and the in-app popup Paystack itself opens) are far
-// stricter than desktop about treating a window.open() as "user-initiated"
-// once any async hop (payment callback, promise) sits between the click and
-// the open/redirect. The pre-opened-blank-tab trick below is kept for
-// desktop, but on mobile we skip it entirely and just navigate the current
-// tab straight to WhatsApp — a same-tab navigation is never subject to
-// popup-blocking rules, so it's the one approach that's reliable everywhere.
+// Mobile browsers are far stricter than desktop about treating a
+// window.open() as "user-initiated" once any async hop (the inquiry
+// request) sits between the click and the open/redirect. The
+// pre-opened-blank-tab trick below is kept for desktop, but on mobile
+// we skip it entirely and just navigate the current tab straight to
+// WhatsApp — a same-tab navigation is never subject to popup-blocking
+// rules, so it's the one approach that's reliable everywhere.
 function isMobileDevice() {
   if (typeof navigator === "undefined") return false;
   return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || "");
@@ -108,34 +108,12 @@ const REVIEWS_SAMPLE = [
   { name: "Efua M.", rating: 9, text: "The agent sent me a video tour before I paid anything, which made the whole process feel safe." },
 ];
 
-// Single source of truth for plan display is the backend (server/plans.js) — these
-// mirror it for the pricing/subscribe UI. Every actual permission/limit is enforced
-// server-side regardless of what's shown here.
-const PRICING_TIERS = [
-  {
-    name: "Basic", amount: 250, price: "GH₵250", period: "/year", highlight: false,
-    features: ["1 hostel/apartment listing", "Up to 3 photos", "Basic listing", "Room availability", "Student enquiries","WhatsApp enquiries", "Standard search placement"],
-  },
-  {
-    name: "Premium", amount: 350, price: "GH₵350", period: "/year", highlight: true,
-    features: ["Up to 2 hostel/apartment listings", "Up to 10 photos per listing", "Video tour", "WhatsApp enquiries", "Higher search ranking", "Availability management", "Analytics", "Verified badge"],
-  },
-  {
-    name: "Featured", amount: 500, price: "GH₵500", period: "/year", highlight: false,
-    features: ["Up to 3 hostel/apartment listings", "Up to 20 photos", "Everything in Premium", "Top of search", "Homepage placement", "Priority enquiries", "Featured badge", "Virtual walkthrough"],
-  },
-];
-
-// Mirrors server/plans.js PLAN_PRICES.
-const PLAN_PRICES_UI = { Basic: 250, Premium: 350, Featured: 500 };
-
-// Mirrors server/plans.js PLAN_FEATURES — used only to drive UI (locked-feature
-// hints, photo-limit copy). The backend independently re-derives and enforces
-// every one of these from the owner's real subscription record.
-const PLAN_FEATURES = {
-  Basic: { maxListings: 1, maxPhotos: 3, videoTour: false, whatsappEnquiries: true, analytics: false, verifiedBadge: false, topSearch: false, homepagePlacement: false, priorityEnquiries: false, featuredBadge: false, virtualWalkthrough: false, maxWalkthroughStops: 0, advancedAvailability: false },
-  Premium: { maxListings: 2, maxPhotos: 10, videoTour: true, whatsappEnquiries: true, analytics: true, verifiedBadge: true, topSearch: false, homepagePlacement: false, priorityEnquiries: false, featuredBadge: false, virtualWalkthrough: false, maxWalkthroughStops: 0, advancedAvailability: true },
-  Featured: { maxListings: 3, maxPhotos: 20, videoTour: true, whatsappEnquiries: true, analytics: true, verifiedBadge: true, topSearch: true, homepagePlacement: true, priorityEnquiries: true, featuredBadge: true, virtualWalkthrough: true, maxWalkthroughStops: 6, advancedAvailability: true },
+// Payment integration and owner subscription plans have been removed — every
+// owner now always has full feature access. Mirrors server/plans.js FULL_FEATURES.
+const FULL_FEATURES = {
+  maxListings: 3, maxPhotos: 20, videoTour: true, whatsappEnquiries: true, analytics: true,
+  verifiedBadge: true, topSearch: true, homepagePlacement: true, priorityEnquiries: true,
+  featuredBadge: true, virtualWalkthrough: true, maxWalkthroughStops: 6, advancedAvailability: true,
 };
 
 
@@ -674,8 +652,6 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading }) {
    CONTACT / BOOKING MODAL
 --------------------------------------------------------- */
 
-  const BOOKING_FEE_GHS = 5;
-
 function ContactModal({ listing, roomType, onClose }) {
    const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -689,31 +665,23 @@ function ContactModal({ listing, roomType, onClose }) {
   const mailLink = listing.ownerEmail ? `mailto:${listing.ownerEmail}?subject=${encodeURIComponent("Inquiry: " + listing.name)}&body=${encodeURIComponent(form.message)}` : null;
 
   // Popups can only be opened synchronously inside a user gesture (the click
-  // handler that fires them). The old code called window.open() inside
-  // submitBookingRequest, which only runs after Paystack's callback fires
-  // and then after verifyBookingPayment's promise resolves — two async hops
-  // removed from the actual click. Browsers no longer trust that as
-  // user-initiated, so they silently blocked it (inquiry still sent, but
-  // WhatsApp never opened). Fix: open the blank tab up front in payAndSend
-  // (the real click handler) and just redirect it here once ready.
-  // Popups can only be opened synchronously inside a user gesture (the click
-  // handler that fires them). The old code called window.open() inside
-  // submitBookingRequest, which only runs after Paystack's callback fires
-  // and then after verifyBookingPayment's promise resolves — two async hops
-  // removed from the actual click. Desktop browsers still honor a blank tab
+  // handler that fires them). Once any async hop (like the inquiry request)
+  // sits between the click and the open/redirect, browsers no longer trust
+  // it as user-initiated and silently block it. Fix: open the blank tab up
+  // front in sendRequest (the real click handler) and just redirect it here
+  // once the inquiry has been sent. Desktop browsers still honor a blank tab
   // that was pre-opened synchronously and redirected later, so that trick is
-  // kept for desktop. Mobile browsers are stricter (and Paystack's own popup
-  // adds another gesture hop), so the pre-opened tab is unreliable there —
-  // on mobile we instead navigate the CURRENT tab straight to WhatsApp,
-  // which is a plain page navigation, not a popup, so it's never blocked.
+  // kept for desktop. Mobile browsers are stricter, so on mobile we instead
+  // navigate the CURRENT tab straight to WhatsApp, which is a plain page
+  // navigation, not a popup, so it's never blocked.
   const isMobile = isMobileDevice();
 
-  const submitBookingRequest = async (paymentReference, waTab) => {
+  const submitBookingRequest = async (waTab) => {
     try {
       await api.sendInquiry({
         listingId: listing.id, name: form.name, phone: form.phone, email: form.email,
         moveIn: form.moveIn,
-        message: `${form.message}\n\n(Booking fee of GH₵${BOOKING_FEE_GHS} paid — ref: ${paymentReference})`,
+        message: form.message,
         roomType,
       });
       if (ownerWhatsappDigits) {
@@ -748,41 +716,17 @@ function ContactModal({ listing, roomType, onClose }) {
     }
   };
 
-  const payAndSend = () => {
+  const sendRequest = () => {
     if (!form.name) { setSendError("Enter your name so the property manager knows who's asking."); return; }
-    if (!form.email) { setSendError("Enter your email — Paystack needs it for the payment receipt."); return; }
-    if (!ownerWhatsappDigits) { setSendError("This owner hasn't added a WhatsApp number yet — try Email instead."); return; }
+    if (!ownerWhatsappDigits && !mailLink) { setSendError("This owner hasn't added a WhatsApp number or email yet."); return; }
     setSendError("");
-    if (!PAYSTACK_PUBLIC_KEY) {
-      setSendError("Payments aren't configured yet — set VITE_PAYSTACK_PUBLIC_KEY.");
-      return;
-    }
-    if (!window.PaystackPop) {
-      setSendError("Couldn't load the payment window. Check your connection and try again.");
-      return;
-    }
     setBusy(true);
     // Open the tab now, synchronously inside this click handler, so the
     // browser's popup blocker treats it as user-initiated. It sits on
     // about:blank until submitBookingRequest redirects it later.
-    // Skipped on mobile — see the comment in submitBookingRequest above.
+    // Skipped on mobile — see the comment above.
     const waTab = (ownerWhatsappDigits && !isMobile) ? window.open("", "_blank") : null;
-    const reference = `bookinn_fee_${listing.id}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
-    const handler = window.PaystackPop.setup({
-      key: PAYSTACK_PUBLIC_KEY,
-      email: form.email,
-      amount: BOOKING_FEE_GHS * 100,
-      currency: "GHS",
-      ref: reference,
-      metadata: { listingId: listing.id, roomType, purpose: "booking_fee" },
-      callback: (response) => {
-        api.verifyBookingPayment(response.reference)
-          .then(() => submitBookingRequest(response.reference, waTab))
-          .catch((err) => { if (waTab) waTab.close(); setSendError(err.message); setBusy(false); });
-      },
-      onClose: () => { if (waTab) waTab.close(); setBusy(false); },
-    });
-    handler.openIframe();
+    submitBookingRequest(waTab);
   };
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,20,35,0.55)" }} onClick={onClose}>
@@ -795,7 +739,7 @@ function ContactModal({ listing, roomType, onClose }) {
           <div style={{ background: C.blueLight }} className="rounded-md p-4 text-center">
             <Check className="mx-auto mb-2" color={C.navy} />
             <p style={{ color: C.navy }} className="font-semibold text-sm">
-              Booking fee paid and inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
+              Inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
             </p>
             {sentWaLink && (
               <a
@@ -821,7 +765,7 @@ function ContactModal({ listing, roomType, onClose }) {
 
             <div style={{ borderColor: C.border }} className="border-t pt-4">
               <p style={{ color: C.gray600 }} className="text-xs mb-3">
-                Pay the GH₵{BOOKING_FEE_GHS} booking fee to send your request — it's sent straight to the owner's WhatsApp automatically once confirmed.
+                Send your request — it goes straight to the owner's WhatsApp automatically.
               </p>
               <div className="flex flex-col gap-2.5">
                 <input placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -835,18 +779,11 @@ function ContactModal({ listing, roomType, onClose }) {
                 <textarea rows={3} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
                   style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none resize-none" />
 
-                <div style={{ background: C.blueMist, borderColor: C.border }} className="border rounded-md p-3">
-                  <p style={{ color: C.ink }} className="text-xs font-semibold mb-0.5 flex items-center gap-1.5">
-                    <ShieldCheck size={13} color={C.blue} /> Secure payment via Paystack
-                  </p>
-                  <p style={{ color: C.gray600 }} className="text-xs">You'll pay GH₵{BOOKING_FEE_GHS} in a secure Paystack window. Your card details never touch BookInn's servers, and WhatsApp only opens once payment is verified.</p>
-                </div>
-
                 {sendError && (
                   <p style={{ color: "#b3261e" }} className="text-xs">{sendError}</p>
                 )}
-                <PrimaryButton full onClick={payAndSend} disabled={busy}>
-                  {busy ? "Processing…" : `Pay GH₵${BOOKING_FEE_GHS} & continue to WhatsApp`}
+                <PrimaryButton full onClick={sendRequest} disabled={busy}>
+                  {busy ? "Sending…" : "Send request & continue to WhatsApp"}
                 </PrimaryButton>
               </div>
             </div>
@@ -1176,7 +1113,7 @@ function SavedView({ listings, favorites, toggleFav, onOpenListing }) {
 /* ---------------------------------------------------------
    PRICING / LIST-YOUR-PROPERTY VIEW
 --------------------------------------------------------- */
-function PricingView({ onSelectTier, onGoToDashboard }) {
+function PricingView({ onGoToDashboard }) {
   return (
     <div>
       <div style={{ background: `linear-gradient(180deg, ${C.navy} 0%, ${C.blue} 100%)` }} className="py-14">
@@ -1188,43 +1125,29 @@ function PricingView({ onSelectTier, onGoToDashboard }) {
         </div>
       </div>
 
-      <div className="max-w-5xl mx-auto px-4 md:px-6 -mt-8 pb-16">
-        <div style={{ background: C.blueLight, borderColor: C.border }} className="border rounded-lg p-4 mb-4 flex items-start gap-3">
+      <div className="max-w-3xl mx-auto px-4 md:px-6 -mt-8 pb-16">
+        <div style={{ background: C.blueLight, borderColor: C.border }} className="border rounded-lg p-4 mb-6 flex items-start gap-3">
           <Sparkles size={18} color={C.blue} className="mt-0.5 shrink-0" />
           <p style={{ color: C.navy }} className="text-sm">
-            <span className="font-bold">Try it free for 270 days.</span> Create an Owner account and publish your listing from the dashboard — no card required. Your listing stays visible to students for the full trial; subscribe anytime to keep it active afterward.
+            <span className="font-bold">Listing is free.</span> Create an Owner account and publish your listing from the dashboard — no card required, no plan to choose.
           </p>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {PRICING_TIERS.map((t) => (
-            <div
-              key={t.name}
-              style={{ borderColor: t.highlight ? C.blue : C.border, borderWidth: t.highlight ? 2 : 1 }}
-              className="border rounded-lg p-6 bg-white flex flex-col"
-            >
-              {t.highlight && <Badge tone="yellow">Most popular</Badge>}
-              <h3 style={{ color: C.ink }} className="font-bold text-lg mt-2">{t.name}</h3>
-              <p className="mt-1 mb-4">
-                <span style={{ color: C.ink }} className="text-2xl font-extrabold">{t.price}</span>
-                <span style={{ color: C.gray600 }} className="text-sm">{t.period}</span>
-              </p>
-              <ul className="flex flex-col gap-2 mb-6 flex-1">
-                {t.features.map((f) => (
-                  <li key={f} style={{ color: C.gray600 }} className="text-sm flex items-start gap-2">
-                    <Check size={15} color={C.blue} className="mt-0.5 shrink-0" /> {f}
-                  </li>
-                ))}
-              </ul>
-              {t.highlight ? (
-                <PrimaryButton full onClick={() => onSelectTier(t.name)}>Get started</PrimaryButton>
-              ) : (
-                <GhostButton full onClick={() => onSelectTier(t.name)}>Get started</GhostButton>
-              )}
-            </div>
-          ))}
+
+        <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white mb-4">
+          <h3 style={{ color: C.ink }} className="font-bold text-lg mb-3">What you get</h3>
+          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+            {[
+              "Up to 3 hostel/apartment listings", "Up to 20 photos per listing", "Video tour", "Virtual walkthrough",
+              "WhatsApp enquiries", "Top-of-search placement", "Homepage placement", "Verified badge", "Analytics",
+            ].map((f) => (
+              <li key={f} style={{ color: C.gray600 }} className="text-sm flex items-start gap-2">
+                <Check size={15} color={C.blue} className="mt-0.5 shrink-0" /> {f}
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white mt-6 flex items-center justify-between flex-wrap gap-4">
+        <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white flex items-center justify-between flex-wrap gap-4">
           <div>
             <h3 style={{ color: C.ink }} className="font-bold text-base mb-1">Already have a listing?</h3>
             <p style={{ color: C.gray600 }} className="text-sm">Manage rooms, photos and inquiries from your dashboard.</p>
@@ -1264,14 +1187,6 @@ function AccountView({ user, favCount, setView }) {
             <p style={{ color: C.gray600 }} className="text-xs">Saved listings</p>
             <p style={{ color: C.ink }} className="font-semibold text-sm">{favCount}</p>
           </div>
-          {user.role === "Owner" && (
-            <div style={{ borderColor: C.border }} className="border rounded-md p-3">
-              <p style={{ color: C.gray600 }} className="text-xs">Subscription</p>
-              <p style={{ color: C.ink }} className="font-semibold text-sm">
-                {user.subscription?.status === "active" ? `${user.subscription.tier} · active` : "Not subscribed"}
-              </p>
-            </div>
-          )}
         </div>
 
         <div className="flex gap-2 flex-wrap">
@@ -1287,109 +1202,17 @@ function AccountView({ user, favCount, setView }) {
   );
 }
 
-const PAYSTACK_PUBLIC_KEY = import.meta.env.VITE_PAYSTACK_PUBLIC_KEY;
-
-function SubscribeView({ user, token, initialTier, onSubscribed, setView }) {
-  const [tier, setTier] = useState(initialTier || "Premium");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
-  const plan = PRICING_TIERS.find((t) => t.name === tier);
-
-  const payWithPaystack = () => {
-    setError("");
-    if (!plan) return;
-    if (!PAYSTACK_PUBLIC_KEY) {
-      setError("Payments aren't configured yet — set VITE_PAYSTACK_PUBLIC_KEY in your .env file.");
-      return;
-    }
-    if (!window.PaystackPop) {
-      setError("Couldn't load the payment window. Check your connection and try again.");
-      return;
-    }
-    setBusy(true);
-    const reference = `bookinn_${tier.toLowerCase()}_${Date.now()}_${Math.floor(Math.random() * 1e6)}`;
-    const handler = window.PaystackPop.setup({
-      key: PAYSTACK_PUBLIC_KEY,
-      email: user.email,
-      amount: plan.amount * 100, // Paystack expects the amount in pesewas (GHS minor units)
-      currency: "GHS",
-      ref: reference,
-      metadata: { userId: user.id, tier },
-      callback: (response) => {
-        // The popup reporting success isn't enough on its own — confirm with Paystack server-side
-        // before unlocking the dashboard, so the amount/status can't be spoofed from the browser.
-        api.verifyPayment(response.reference, tier, token)
-          .then((data) => onSubscribed(data.user))
-          .catch((err) => setError(err.message))
-          .finally(() => setBusy(false));
-      },
-      onClose: () => setBusy(false),
-    });
-    handler.openIframe();
-  };
-
-  if (user && user.role !== "Owner") {
-    return (
-      <div className="max-w-md mx-auto px-4 py-16 text-center">
-        <p style={{ color: C.ink }} className="font-semibold mb-2">This account is registered as a {user.role}</p>
-        <p style={{ color: C.gray600 }} className="text-sm mb-4">Only Owner accounts can subscribe to list properties. Create a separate Owner account to get started.</p>
-        <PrimaryButton onClick={() => setView("home")}>Back to home</PrimaryButton>
-      </div>
-    );
-  }
-
+function NotOwnerNotice({ user, setView }) {
   return (
-    <div className="max-w-lg mx-auto px-4 py-12">
-      <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white">
-        <h1 style={{ color: C.ink }} className="text-xl font-extrabold mb-1">Subscribe to list properties</h1>
-        <p style={{ color: C.gray600 }} className="text-sm mb-5">Choose a plan to unlock the owner dashboard.</p>
-
-        <div className="grid grid-cols-3 gap-2 mb-5">
-          {PRICING_TIERS.map((t) => (
-            <button
-              key={t.name}
-              onClick={() => setTier(t.name)}
-              style={{ borderColor: tier === t.name ? C.blue : C.border, background: tier === t.name ? C.blueLight : C.white }}
-              className="border rounded-md p-3 text-left"
-            >
-              <p style={{ color: C.ink }} className="text-sm font-bold">{t.name}</p>
-              <p style={{ color: C.gray600 }} className="text-xs">{t.price}{t.period}</p>
-            </button>
-          ))}
-        </div>
-
-        {plan && (
-          <ul className="flex flex-col gap-1.5 mb-5">
-            {plan.features.map((f) => (
-              <li key={f} style={{ color: C.gray600 }} className="text-xs flex items-start gap-2">
-                <Check size={13} color={C.blue} className="mt-0.5 shrink-0" /> {f}
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <div style={{ background: C.blueMist, borderColor: C.border }} className="border rounded-md p-3 mb-4">
-          <p style={{ color: C.ink }} className="text-xs font-semibold mb-0.5 flex items-center gap-1.5">
-            <ShieldCheck size={13} color={C.blue} /> Secure payment via Paystack
-          </p>
-          <p style={{ color: C.gray600 }} className="text-xs">You'll pay in a secure Paystack window. Your card details never touch BookInn's servers, and the subscription only unlocks once the payment is verified.</p>
-        </div>
-
-        {error && (
-          <div style={{ background: "#fdecea", color: "#b3261e" }} className="text-xs rounded-md px-3 py-2 mb-3">
-            {error}
-          </div>
-        )}
-
-        <PrimaryButton full onClick={payWithPaystack} disabled={busy || !plan}>
-          {busy ? "Processing…" : `Pay GH₵${plan?.amount.toLocaleString()} with Paystack`}
-        </PrimaryButton>
-      </div>
+    <div className="max-w-md mx-auto px-4 py-16 text-center">
+      <p style={{ color: C.ink }} className="font-semibold mb-2">This account is registered as a {user.role}</p>
+      <p style={{ color: C.gray600 }} className="text-sm mb-4">Only Owner accounts can list properties. Create a separate Owner account to get started.</p>
+      <PrimaryButton onClick={() => setView("home")}>Back to home</PrimaryButton>
     </div>
   );
 }
 
-function AdminView({ user, token, listings, maxListings, ownerStats, statsLoading, ownerInquiries, inquiriesLoading, mySubscription, subLoading, reminder, addListing, updateListing, deleteListing, onCancelSubscription, onStartTrial, onUpgrade }) {
+function AdminView({ user, token, listings, maxListings, ownerStats, statsLoading, ownerInquiries, inquiriesLoading, addListing, updateListing, deleteListing }) {
   const emptyForm = {
     name: "", university: UNIVERSITIES[0], price: "",
     type: "Hostel", roomType: HOSTEL_ROOM_TYPES[0], bath: "Shared bath",
@@ -1407,36 +1230,13 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
-  const [dismissedReminder, setDismissedReminder] = useState(false);
-  const [startingTrial, setStartingTrial] = useState(false);
-  const [trialError, setTrialError] = useState("");
 
-  const handleStartTrialClick = async () => {
-    setTrialError("");
-    setStartingTrial(true);
-    try {
-      await onStartTrial?.();
-    } catch (err) {
-      setTrialError(err.message || "Couldn't start your free trial. Please try again.");
-    } finally {
-      setStartingTrial(false);
-    }
-  };
-
-  // The dashboard never decides plan/feature access on its own — everything here is
-  // read straight from the live, server-computed subscription view (mySubscription),
-  // which the backend independently re-derives and enforces on every request.
-  const view = mySubscription; // { plan, status, effectivePlan, features, isListingVisible, daysRemaining, ... }
-  const features = view?.features || PLAN_FEATURES.Basic;
   const hasListing = listings.length > 0;
   const atListingLimit = listings.length >= maxListings;
-  // Matches the backend's requireCanCreateListing exactly: only allowed once a
-  // trial or paid plan is actually live — the owner must start their free trial
-  // themselves first (see the subscription card below), it's never auto-granted.
-  const canAddListing = !atListingLimit && view?.isListingVisible;
-  const trialAvailable = !view?.trialUsed && view?.status !== "active";
+  const canAddListing = !atListingLimit;
 
-  const galleryCap = features.maxPhotos;
+  const features = FULL_FEATURES;
+  const galleryCap = FULL_FEATURES.maxPhotos;
 
   const stats = [
     { label: "Active listings", value: statsLoading ? "…" : (ownerStats?.activeListings ?? 0), icon: Building2 },
@@ -1472,8 +1272,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
     const room = Math.max(0, cap - form.galleryData.length);
     const toAdd = files.slice(0, room);
     if (files.length > toAdd.length) {
-      const nextPlan = view?.effectivePlan === "Basic" ? "Premium" : "Featured";
-      setSubmitError(`You've reached the ${cap}-photo limit on the ${view?.effectivePlan || "Basic"} plan. Upgrade to ${nextPlan} for up to ${PLAN_FEATURES[nextPlan].maxPhotos} photos.`);
+      setSubmitError(`You've reached the ${cap}-photo limit per listing.`);
     } else {
       setSubmitError("");
     }
@@ -1706,18 +1505,11 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
         </div>
         {!atListingLimit && (
           <PrimaryButton
-            disabled={startingTrial}
-            onClick={() => {
-              if (!canAddListing && !showForm) {
-                trialAvailable ? handleStartTrialClick() : onUpgrade?.();
-                return;
-              }
-              showForm ? cancelForm() : setShowForm(true);
-            }}
+            onClick={() => (showForm ? cancelForm() : setShowForm(true))}
           >
             <span className="flex items-center gap-2">
               <Plus size={16} />
-              {canAddListing || showForm ? "Add listing" : trialAvailable ? (startingTrial ? "Starting trial…" : "Start free trial to add listing") : "Subscribe to add listing"}
+              {showForm ? "Add listing" : "Add listing"}
             </span>
           </PrimaryButton>
         )}
@@ -1725,93 +1517,8 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
 
       {hasListing && (
         <p style={{ color: C.gray600 }} className="text-xs -mt-4 mb-4">
-          {listings.length}/{maxListings} listing{maxListings === 1 ? "" : "s"} used on your {view?.status === "trial" ? "trial" : view?.plan || "current"} plan.
-          {atListingLimit && view?.plan !== "Featured" && (
-            <> <button type="button" onClick={onUpgrade} style={{ color: C.blue }} className="font-semibold hover:underline">Upgrade for more →</button></>
-          )}
+          {listings.length}/{maxListings} listing{maxListings === 1 ? "" : "s"} used.
         </p>
-      )}
-      {hasListing && !view?.isListingVisible && !subLoading && (
-        <p style={{ color: "#b3261e" }} className="text-xs -mt-3 mb-4">
-          Your trial/subscription isn't active — your listing{listings.length > 1 ? "s are" : " is"} currently hidden from students. Subscribe below to make {listings.length > 1 ? "them" : "it"} visible again.
-        </p>
-      )}
-
-      {reminder && !dismissedReminder && (
-        <div style={{ background: "#fff6dc", borderColor: C.border }} className="border rounded-lg p-3 mb-4 flex items-start justify-between gap-3">
-          <div className="flex items-start gap-2.5">
-            <AlertTriangle size={16} color={C.yellowDark} className="mt-0.5 shrink-0" />
-            <p style={{ color: C.yellowDark }} className="text-sm font-medium">{reminder.message}</p>
-          </div>
-          <button onClick={() => setDismissedReminder(true)} aria-label="Dismiss reminder"><X size={15} color={C.gray600} /></button>
-        </div>
-      )}
-
-      {!subLoading && view && (
-        <div style={{ borderColor: C.border, background: view.status === "expired" ? "#fdecea" : C.white }} className="border rounded-lg p-4 sm:p-5 mb-6 flex items-start justify-between flex-wrap gap-4">
-          {view.status === "trial" && (
-            <div className="flex items-start gap-3">
-              <Sparkles size={20} color={C.blue} className="mt-0.5 shrink-0" />
-              <div>
-                <p style={{ color: C.navy }} className="text-sm font-extrabold">Free Trial</p>
-                <p style={{ color: C.ink }} className="text-sm mt-0.5">{view.daysRemaining} day{view.daysRemaining === 1 ? "" : "s"} remaining</p>
-                <p style={{ color: C.gray600 }} className="text-xs mt-0.5">{hasListing ? "Your listing is currently active." : "Add your listing to publish it to students."}</p>
-              </div>
-            </div>
-          )}
-          {view.status === "active" && (
-            <div className="flex items-start gap-3">
-              <BadgeCheck size={20} color={C.green} className="mt-0.5 shrink-0" />
-              <div>
-                <p style={{ color: C.navy }} className="text-sm font-extrabold">{view.plan?.toUpperCase()} PLAN</p>
-                <p style={{ color: C.gray600 }} className="text-xs mt-0.5">GH₵{PLAN_PRICES_UI[view.plan]}/year · Your subscription is active.</p>
-                {view.nextBillingDate && <p style={{ color: C.gray400 }} className="text-xs mt-0.5">Next billing: {new Date(view.nextBillingDate).toLocaleDateString()}</p>}
-              </div>
-            </div>
-          )}
-          {view.status === "none" && trialAvailable && (
-            <div className="flex items-start gap-3">
-              <Sparkles size={20} color={C.blue} className="mt-0.5 shrink-0" />
-              <div>
-                <p style={{ color: C.navy }} className="text-sm font-extrabold">Free Trial Available</p>
-                <p style={{ color: C.ink }} className="text-sm mt-0.5">270 days free, no card required.</p>
-                <p style={{ color: C.gray600 }} className="text-xs mt-0.5">Click below to start your trial, then add your first listing to publish it to students.</p>
-                {trialError && <p style={{ color: "#b3261e" }} className="text-xs mt-1 font-medium">{trialError}</p>}
-              </div>
-            </div>
-          )}
-          {(view.status === "expired" || view.status === "cancelled" || (view.status === "none" && !trialAvailable)) && (
-            <div className="flex items-start gap-3">
-              <AlertTriangle size={20} color="#b3261e" className="mt-0.5 shrink-0" />
-              <div>
-                <p style={{ color: "#b3261e" }} className="text-sm font-extrabold">{view.expiredFromTrial ? "TRIAL EXPIRED" : view.status === "cancelled" ? "SUBSCRIPTION CANCELLED" : "NO ACTIVE PLAN"}</p>
-                {view.expiredFromTrial ? (
-                  <>
-                    <p style={{ color: C.ink }} className="text-sm mt-0.5">Your free trial has ended.</p>
-                    <p style={{ color: C.gray600 }} className="text-xs mt-0.5">Your listing is currently paused. Subscribe to make your hostel visible to students again.</p>
-                  </>
-                ) : (
-                  <p style={{ color: C.gray600 }} className="text-xs mt-0.5">{hasListing ? "Your listing is currently paused." : "Subscribe to a plan to publish your listing."}</p>
-                )}
-              </div>
-            </div>
-          )}
-          <div className="flex items-center gap-2">
-            {view.status === "trial" && <GhostButton onClick={onUpgrade}>Upgrade anytime →</GhostButton>}
-            {view.status === "active" && (
-              <>
-                <GhostButton onClick={onUpgrade}>Manage Subscription</GhostButton>
-                <button onClick={onCancelSubscription} style={{ color: C.gray400 }} className="text-xs font-semibold hover:underline">Cancel</button>
-              </>
-            )}
-            {view.status === "none" && trialAvailable && (
-              <PrimaryButton disabled={startingTrial} onClick={handleStartTrialClick}>{startingTrial ? "Starting…" : "Start Free Trial"}</PrimaryButton>
-            )}
-            {(view.status === "expired" || view.status === "cancelled" || (view.status === "none" && !trialAvailable)) && (
-              <PrimaryButton onClick={onUpgrade}>Subscribe Now</PrimaryButton>
-            )}
-          </div>
-        </div>
       )}
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-6">
@@ -1822,21 +1529,13 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
             <p style={{ color: C.gray600 }} className="text-xs mt-0.5 leading-tight">{s.label}</p>
           </div>
         ))}
-        {features.analytics ? (
-          analyticsStats.map((s) => (
-            <div key={s.label} style={{ borderColor: C.border }} className="border rounded-lg p-3 sm:p-4 bg-white min-w-0">
-              <s.icon size={18} color={C.blue} className="mb-2 shrink-0" />
-              <p style={{ color: C.ink }} className="text-lg sm:text-xl font-extrabold truncate">{s.value}</p>
-              <p style={{ color: C.gray600 }} className="text-xs mt-0.5 leading-tight">{s.label}</p>
-            </div>
-          ))
-        ) : (
-          <button onClick={onUpgrade} style={{ borderColor: C.border }} className="border rounded-lg p-3 sm:p-4 bg-white min-w-0 col-span-2 text-left hover:bg-gray-50">
-            <Lock size={18} color={C.gray400} className="mb-2 shrink-0" />
-            <p style={{ color: C.gray600 }} className="text-sm font-semibold">Analytics 🔒</p>
-            <p style={{ color: C.gray400 }} className="text-xs mt-0.5">Available with Premium and Featured plans.</p>
-          </button>
-        )}
+        {analyticsStats.map((s) => (
+          <div key={s.label} style={{ borderColor: C.border }} className="border rounded-lg p-3 sm:p-4 bg-white min-w-0">
+            <s.icon size={18} color={C.blue} className="mb-2 shrink-0" />
+            <p style={{ color: C.ink }} className="text-lg sm:text-xl font-extrabold truncate">{s.value}</p>
+            <p style={{ color: C.gray600 }} className="text-xs mt-0.5 leading-tight">{s.label}</p>
+          </div>
+        ))}
       </div>
 
       <div style={{ borderColor: C.border }} className="border rounded-lg bg-white mb-6">
@@ -1844,12 +1543,10 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
           <div>
             <h3 style={{ color: C.ink }} className="font-bold text-sm">Recent inquiries</h3>
             <p style={{ color: C.gray600 }} className="text-xs mt-0.5">
-              {features.priorityEnquiries
-                ? "Your Featured plan gives your inquiries priority — they're flagged below."
-                : "Messages from students about your listings."}
+              Your inquiries get priority — they're flagged below.
             </p>
           </div>
-          {features.priorityEnquiries && <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Priority</span></Badge>}
+          <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Priority</span></Badge>
         </div>
         <div className="px-4 sm:px-5 pb-4 sm:pb-5">
           {inquiriesLoading && <p style={{ color: C.gray600 }} className="text-sm py-4 text-center">Loading inquiries…</p>}
@@ -2003,7 +1700,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                         style={{ borderColor: C.border }} className="border rounded-md px-3 py-1.5 text-sm outline-none w-36"
                       />
                     )}
-                    {r.checked && features.advancedAvailability && (
+                    {r.checked && (
                       <select
                         aria-label={`${r.roomType} availability`}
                         value={r.availability}
@@ -2013,11 +1710,6 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                       >
                         {AVAILABILITY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
-                    )}
-                    {r.checked && !features.advancedAvailability && (
-                      <button type="button" onClick={onUpgrade} style={{ color: C.blue }} className="text-xs font-semibold hover:underline">
-                        Set per-room status →
-                      </button>
                     )}
                   </div>
                 ))}
@@ -2042,15 +1734,10 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
               <input type="checkbox" checked={form.kitchen} onChange={(e) => setForm({ ...form, kitchen: e.target.checked })} style={{ accentColor: C.blue }} />
               Shared kitchen
             </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: features.featuredBadge ? C.gray600 : C.gray400 }}>
-              <input type="checkbox" checked={features.featuredBadge && form.featured} disabled={!features.featuredBadge} onChange={(e) => setForm({ ...form, featured: e.target.checked })} style={{ accentColor: C.blue }} />
-              Featured listing {!features.featuredBadge && <Lock size={12} className="inline ml-0.5" />}
+            <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: C.gray600 }}>
+              <input type="checkbox" checked={form.featured} onChange={(e) => setForm({ ...form, featured: e.target.checked })} style={{ accentColor: C.blue }} />
+              Featured listing
             </label>
-            {!features.featuredBadge && (
-              <button type="button" onClick={onUpgrade} style={{ color: C.blue }} className="text-xs font-semibold hover:underline -ml-2">
-                Available with Featured plan →
-              </button>
-            )}
           </div>
 
           <div className="mb-4">
@@ -2124,17 +1811,15 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                 )}
               </div>
               <p style={{ color: C.gray600 }} className="text-xs mt-1.5">
-                {`Your ${view?.effectivePlan || "Basic"} plan allows up to ${galleryCap} extra photos. `}
-                {view?.effectivePlan !== "Featured" && <button type="button" onClick={onUpgrade} style={{ color: C.blue }} className="font-semibold hover:underline">Upgrade for more →</button>}
+                {`Up to ${galleryCap} photos per listing.`}
               </p>
             </div>
 
             <div>
               <p style={{ color: C.ink }} className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-                Video tour {!features.videoTour && <Lock size={13} color={C.gray400} />}
+                Video tour
               </p>
-              {features.videoTour ? (
-                <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex items-center gap-3 flex-wrap">
                   <label style={{ borderColor: C.border, color: C.gray600 }} className="border border-dashed rounded-md px-4 py-3 text-sm cursor-pointer flex items-center gap-2 hover:bg-gray-50">
                     <PlayCircle size={16} color={C.blue} />
                     {form.uploadingVideo ? "Uploading…" : form.videoData ? "Change video" : "Upload video"}
@@ -2150,24 +1835,17 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                     </button>
                   )}
                 </div>
-              ) : (
-                <div style={{ borderColor: C.border, background: "#fafbfc" }} className="border border-dashed rounded-md px-4 py-3 text-sm flex items-center justify-between gap-3">
-                  <span style={{ color: C.gray600 }}>Available with Premium and Featured plans.</span>
-                  <button type="button" onClick={onUpgrade} style={{ color: C.blue }} className="font-semibold hover:underline whitespace-nowrap">Upgrade →</button>
-                </div>
-              )}
               <p style={{ color: C.gray600 }} className="text-xs mt-1.5">
-                {features.videoTour ? (form.videoData ? "Video attached." : "Optional — MP4 under 25MB recommended.") : ""}
+                {form.videoData ? "Video attached." : "Optional — MP4 under 25MB recommended."}
               </p>
             </div>
           </div>
 
           <div className="mb-5">
             <p style={{ color: C.ink }} className="text-sm font-semibold mb-2 flex items-center gap-1.5">
-              Virtual walkthrough {!features.virtualWalkthrough && <Lock size={13} color={C.gray400} />}
+              Virtual walkthrough
             </p>
-            {features.virtualWalkthrough ? (
-              <div>
+            <div>
                 <div className="flex flex-col gap-3">
                   {form.walkthrough.map((stop, idx) => (
                     <div key={idx} style={{ borderColor: C.border }} className="border rounded-md p-3 flex items-center gap-3 flex-wrap">
@@ -2213,12 +1891,6 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                   {`Guide students room-by-room — up to ${walkthroughCap} stops (${form.walkthrough.length}/${walkthroughCap} used). Each stop is a photo with a short label, e.g. "Bedroom", "Kitchen", "Bathroom".`}
                 </p>
               </div>
-            ) : (
-              <div style={{ borderColor: C.border, background: "#fafbfc" }} className="border border-dashed rounded-md px-4 py-3 text-sm flex items-center justify-between gap-3">
-                <span style={{ color: C.gray600 }}>Available with the Featured plan.</span>
-                <button type="button" onClick={onUpgrade} style={{ color: C.blue }} className="font-semibold hover:underline whitespace-nowrap">Upgrade →</button>
-              </div>
-            )}
           </div>
 
           {submitError && (
@@ -2998,21 +2670,10 @@ function Footer({ setView, onOwnerDashboardClick, onListPropertyClick }) {
    so even someone who finds the URL can't get in without an
    Admin login.
 --------------------------------------------------------- */
-function SubscriptionBadge({ subscription }) {
-  if (!subscription || subscription.status !== "active") {
-    return <span style={{ color: C.gray400 }} className="text-xs">No active plan</span>;
-  }
-  return (
-    <span style={{ background: C.blueLight, color: C.blue }} className="text-xs font-semibold px-2 py-0.5 rounded-full whitespace-nowrap">
-      {subscription.tier}
-    </span>
-  );
-}
 
 function PlatformAdminView({ token, onManageOwner }) {
   const TABS = [
     { key: "overview", label: "Overview" },
-    { key: "revenue", label: "Revenue" },
     { key: "students", label: "Students" },
     { key: "parents", label: "Parents" },
     { key: "owners", label: "Owners" },
@@ -3066,13 +2727,6 @@ function PlatformAdminView({ token, onManageOwner }) {
     { label: "Inquiries", value: stats.inquiries30d, icon: Inbox },
   ] : [];
 
-  const revenueStats = stats ? [
-    { label: "Est. revenue (GH₵)", value: stats.estimatedRevenueGHS.toLocaleString(), icon: Wallet },
-    { label: "Active subscriptions", value: stats.activeSubscriptions, icon: BadgeCheck },
-    { label: "Avg. revenue / owner (GH₵)", value: stats.avgRevenuePerActiveOwner.toLocaleString(), icon: TrendingUp },
-    { label: "Owner conversion rate", value: `${stats.ownerConversionRate}%`, icon: Users },
-  ] : [];
-
   const byRole = (role) =>
     users
       .filter((u) => u.role === role)
@@ -3104,7 +2758,6 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "name", label: "Name" },
     { key: "email", label: "Email" },
     { key: "role", label: "Role", render: (u) => <RoleBadge role={u.role} /> },
-    { key: "subscription", label: "Subscription", render: (u) => <SubscriptionBadge subscription={u.subscription} /> },
     { key: "createdAt", label: "Joined", render: (u) => u.createdAt ? new Date(u.createdAt).toLocaleDateString() : "—" },
   ];
 
@@ -3262,29 +2915,7 @@ function PlatformAdminView({ token, onManageOwner }) {
             </>
           )}
 
-          {tab === "revenue" && stats && (
-            <>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-6">
-                {revenueStats.map((s) => <AdminStatCard key={s.label} {...s} />)}
-              </div>
-              <div style={{ borderColor: C.border }} className="border rounded-lg p-4 sm:p-5 bg-white">
-                <h3 style={{ color: C.ink }} className="font-bold text-sm mb-3">Active subscriptions by plan</h3>
-                <div className="grid grid-cols-3 gap-3 mb-1">
-                  {["Basic", "Premium", "Featured"].map((tier) => (
-                    <div key={tier} style={{ borderColor: C.border }} className="border rounded-md p-3 text-center">
-                      <p style={{ color: C.ink }} className="text-lg font-extrabold">{stats.tierCounts[tier] || 0}</p>
-                      <p style={{ color: C.gray600 }} className="text-xs mt-0.5">{tier}</p>
-                    </div>
-                  ))}
-                </div>
-                <p style={{ color: C.gray400 }} className="text-xs mt-3">
-                  Estimated from active subscription plans — this reflects platform revenue from owner subscriptions, not full profit (running costs aren't tracked here).
-                </p>
-              </div>
-            </>
-          )}
-
-          {tab !== "overview" && tab !== "revenue" && tab !== "emails" && (
+          {tab !== "overview" && tab !== "emails" && (
             <div className="relative mb-4 max-w-sm">
               <Search size={16} style={{ color: C.gray400 }} className="absolute left-3 top-1/2 -translate-y-1/2" />
               <input
@@ -3481,7 +3112,6 @@ export default function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [authRedirect, setAuthRedirect] = useState(null);
-  const [pendingTier, setPendingTier] = useState(null);
   const [ownerStats, setOwnerStats] = useState(null);
   const [ownerStatsLoading, setOwnerStatsLoading] = useState(false);
   const [ownerInquiries, setOwnerInquiries] = useState([]);
@@ -3489,9 +3119,6 @@ export default function App() {
   const [myListings, setMyListings] = useState([]);
   const [myListingsLoading, setMyListingsLoading] = useState(false);
   const [myMaxListings, setMyMaxListings] = useState(1);
-  const [mySubscription, setMySubscription] = useState(null);
-  const [subLoading, setSubLoading] = useState(false);
-  const [reminder, setReminder] = useState(null);
 
   // Platform admin has its own sign-in, completely separate from the public
   // site's user/token above — kept under its own localStorage key so signing
@@ -3594,41 +3221,9 @@ export default function App() {
       .finally(() => setMyListingsLoading(false));
   }, [token, user?.role]);
 
-  // The subscription card, trial countdown and one-time reminders all come from this
-  // single live-computed endpoint — never from a client-side timer or stored count.
-  const refreshSubscription = React.useCallback(() => {
-    if (!token || user?.role !== "Owner") { setMySubscription(null); return; }
-    setSubLoading(true);
-    api.getMySubscription(token)
-      .then((data) => {
-        setMySubscription(data.subscriptionView);
-        if (data.reminder) setReminder(data.reminder);
-      })
-      .catch(() => {})
-      .finally(() => setSubLoading(false));
-  }, [token, user?.role]);
-
   React.useEffect(() => {
-    if (view === "admin" && user?.role === "Owner") { refreshMyListings(); refreshSubscription(); }
-  }, [view, user?.role, refreshMyListings, refreshSubscription]);
-
-  const handleCancelSubscription = async () => {
-    if (!token) return;
-    const data = await api.cancelSubscription(token);
-    if (data.user) setUser(data.user);
-    refreshSubscription();
-    refreshMyListings();
-  };
-
-  // The free trial is only ever started by the owner explicitly clicking
-  // "Start Free Trial" on their dashboard — never granted automatically.
-  const handleStartTrial = async () => {
-    if (!token) return;
-    const data = await api.startFreeTrial(token);
-    if (data.user) setUser(data.user);
-    refreshSubscription();
-    refreshMyListings();
-  };
+    if (view === "admin" && user?.role === "Owner") refreshMyListings();
+  }, [view, user?.role, refreshMyListings]);
 
   const toggleFav = (id) => {
     setFavorites((prev) => {
@@ -3650,10 +3245,9 @@ export default function App() {
 
   const addListing = async (l) => {
     const data = await api.addListing(l, token);
-    if (data.user) setUser(data.user); // picks up the free-trial subscription, if it was just granted
+    if (data.user) setUser(data.user);
     refreshOwnerStats();
     refreshMyListings();
-    refreshSubscription();
     refreshPublicListings();
   };
 
@@ -3672,29 +3266,13 @@ export default function App() {
     refreshPublicListings();
   };
 
- const goToAdmin = () => { setPendingTier(null); if (user) { setView("admin"); } else { setAuthRedirect("admin"); setView("login"); } };
+ const goToAdmin = () => { if (user) { setView("admin"); } else { setAuthRedirect("admin"); setView("login"); } };
 
-  // "List your property" drops any signed-in Owner straight into their dashboard,
-  // where they can start their free trial themselves — no need to detour through pricing first.
+  // "List your property" drops any signed-in Owner straight into their dashboard.
   const goToListProperty = () => {
     if (!user) { setAuthRedirect("admin"); setView("login"); return; }
     if (user.role === "Owner") { setView("admin"); }
     else { setView("pricing"); }
-  };
-
-  const goToSubscribe = (tierName) => {
-    setPendingTier(tierName);
-    if (user) { setView("admin"); }
-    else { setAuthRedirect("admin"); setView("login"); }
-  };
-
-  const handleSubscribed = (updatedUser) => {
-    setUser(updatedUser);
-    setPendingTier(null);
-    refreshOwnerStats();
-    refreshMyListings();
-    refreshSubscription();
-    refreshPublicListings();
   };
 
   // Used by the platform admin's "Manage listings" button — signs the admin's
@@ -3709,8 +3287,6 @@ export default function App() {
     setOwnerInquiries([]);
     setMyListings([]);
     setMyMaxListings(1);
-    setMySubscription(null);
-    setReminder(null);
     setUser(ownerUser);
     setToken(ownerToken);
     localStorage.setItem("bookinn_token", ownerToken);
@@ -3745,9 +3321,6 @@ export default function App() {
     setOwnerInquiries([]);
     setMyListings([]);
     setMyMaxListings(1);
-    setMySubscription(null);
-    setReminder(null);
-    setPendingTier(null);
   };
 
   return (
@@ -3783,7 +3356,7 @@ export default function App() {
           />
         )}
         {view === "saved" && <SavedView listings={listings} favorites={favorites} toggleFav={toggleFav} onOpenListing={openListing} />}
-        {view === "pricing" && <PricingView onSelectTier={goToSubscribe} onGoToDashboard={goToAdmin} />}
+        {view === "pricing" && <PricingView onGoToDashboard={goToAdmin} />}
         {view === "how-it-works" && <HowBookingWorksView setView={setView} />}
         {view === "help-center" && <HelpCenterView setView={setView} />}
         {view === "safety-tips" && <SafetyTipsView setView={setView} />}
@@ -3792,9 +3365,7 @@ export default function App() {
           !user ? (
             <LoginView onAuthSuccess={handleAuthSuccess} onGuest={handleGuest} setView={setView} redirectNote="Sign in to manage your property listings." />
           ) : user.role !== "Owner" ? (
-            <SubscribeView user={user} token={token} initialTier={pendingTier} onSubscribed={handleSubscribed} setView={setView} />
-          ) : pendingTier ? (
-            <SubscribeView user={user} token={token} initialTier={pendingTier} onSubscribed={handleSubscribed} setView={setView} />
+            <NotOwnerNotice user={user} setView={setView} />
           ) : (
             <AdminView
               user={user}
@@ -3805,13 +3376,7 @@ export default function App() {
               statsLoading={ownerStatsLoading}
               ownerInquiries={ownerInquiries}
               inquiriesLoading={ownerInquiriesLoading}
-              mySubscription={mySubscription}
-              subLoading={subLoading}
-              reminder={reminder}
               addListing={addListing} updateListing={updateListing} deleteListing={deleteListingHandler}
-              onCancelSubscription={handleCancelSubscription}
-              onStartTrial={handleStartTrial}
-              onUpgrade={() => setView("pricing")}
             />
           )
         )}

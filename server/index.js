@@ -8,7 +8,7 @@ import path from "path";
 import { fileURLToPath } from "url";
 import { store } from "./store.js";
 import { migrate } from "./db.js";
-import { PLAN_PRICES, PLAN_FEATURES, PLAN_ORDER, maxListingsForView, computeSubscriptionView, reminderForView } from "./plans.js";
+import { FULL_FEATURES, maxListingsForView, computeSubscriptionView } from "./plans.js";
 import { uploadBuffer, cloudinaryConfigured } from "./cloudinary.js";
 import crypto from "crypto";
 import { sendPasswordResetEmail, sendVerificationEmail, emailConfigured, personalizeContent, buildBrandedEmailHtml } from "./email.js";
@@ -25,11 +25,6 @@ const PORT = process.env.PORT || 4000;
 // In a real production deployment, set JWT_SECRET as a real environment
 // variable and never commit a secret to source control.
 const JWT_SECRET = process.env.JWT_SECRET || "bookinn-dev-secret-change-me";
-const PAYSTACK_SECRET_KEY = process.env.PAYSTACK_SECRET_KEY || "";
-
-// GHS amounts (cedis) for each subscription tier — the single source of truth
-// lives in plans.js and is mirrored (display-only) in src/App.jsx.
-const SUBSCRIPTION_AMOUNTS = PLAN_PRICES;
 
 const app = express();
 app.use(cors());
@@ -45,7 +40,6 @@ app.use(express.json({
 
 const ROLES = ["Owner", "Student", "Parent"]; // roles the public signup form is allowed to create
 const ADMIN_ROLE = "Admin"; // never accepted from public /auth/signup — seeded below instead
-const SUBSCRIPTION_TIERS = PLAN_ORDER;
 const HOSTEL_ROOM_TYPES = ["One in a room", "Two in a room", "Three in a room", "Four in a room", "Six in a room"];
 const APARTMENT_ROOM_TYPES = ["Self-contained", "Shared Apartment"];
 
@@ -329,130 +323,18 @@ app.get("/api/auth/me", requireAuth, ah(async (req, res) => {
 }));
 
 // ---------------------------------------------------------
-// Payments (Paystack)
+// Payment integration, the GH₵5 booking fee, and owner subscription plans
+// (Basic/Premium/Featured) have been removed. Every owner now always has
+// full feature access (see server/plans.js) and every booking request goes
+// straight to the owner's WhatsApp with no fee.
 // ---------------------------------------------------------
-// The Paystack popup on the frontend reports success client-side, which can be spoofed —
-// so before unlocking anything we re-check the transaction directly with Paystack using the
-// secret key, and confirm the amount/currency/status all match the plan being purchased.
-app.post("/api/payments/verify", requireAuth, ah(async (req, res) => {
-  const { reference, tier } = req.body || {};
-  if (!reference || !SUBSCRIPTION_TIERS.includes(tier)) {
-    return res.status(400).json({ error: "A payment reference and a valid plan are required." });
-  }
-  if (!PAYSTACK_SECRET_KEY) {
-    return res.status(500).json({ error: "Payments aren't configured on the server yet — set PAYSTACK_SECRET_KEY." });
-  }
-  try {
-    const psRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-      headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
-    });
-    const psData = await psRes.json();
-    if (!psRes.ok || !psData.status) {
-      return res.status(402).json({ error: psData?.message || "Could not verify this payment with Paystack." });
-    }
-    const tx = psData.data;
-    const expectedAmount = SUBSCRIPTION_AMOUNTS[tier] * 100; // pesewas
-    if (tx.status !== "success") {
-      return res.status(402).json({ error: "That payment was not successful." });
-    }
-    if (tx.currency !== "GHS" || tx.amount !== expectedAmount) {
-      return res.status(402).json({ error: "The paid amount didn't match the selected plan." });
-    }
-    const updated = await store.setUserSubscription(req.user.sub, tier);
-    if (!updated) return res.status(404).json({ error: "User not found." });
-    res.json({ user: publicUser(updated) });
-  } catch (err) {
-    console.error("Paystack verification error:", err);
-    res.status(502).json({ error: "Payment verification failed. Please try again." });
-  }
-}));
-// Booking fee verification — every student pays a flat GH₵5 fee via Paystack
-// before their request reaches the owner's WhatsApp. Public endpoint (students
-// aren't logged in). The amount is a fixed constant here, never trusted from
-// the client, so it can't be tampered with from the browser.
-const BOOKING_FEE_GHS = 5;
-
-app.post("/api/bookings/verify-payment", ah(async (req, res) => {
-  const { reference } = req.body || {};
-  if (!reference) {
-    return res.status(400).json({ error: "A payment reference is required." });
-  }
-  if (!PAYSTACK_SECRET_KEY) {
-    return res.status(500).json({ error: "Payments aren't configured on the server yet — set PAYSTACK_SECRET_KEY." });
-  }
-  try {
-    const psRes = await fetch(`https://api.paystack.co/transaction/verify/${encodeURIComponent(reference)}`, {
-      headers: { Authorization: `Bearer ${PAYSTACK_SECRET_KEY}` },
-    });
-    const psData = await psRes.json();
-    if (!psRes.ok || !psData.status) {
-      return res.status(402).json({ error: psData?.message || "Could not verify this payment with Paystack." });
-    }
-    const tx = psData.data;
-    if (tx.status !== "success") {
-      return res.status(402).json({ error: "That payment was not successful." });
-    }
-    if (tx.currency !== "GHS" || tx.amount !== BOOKING_FEE_GHS * 100) {
-      return res.status(402).json({ error: "The paid amount didn't match the booking fee." });
-    }
-    res.json({ verified: true, reference: tx.reference });
-  } catch (err) {
-    console.error("Booking payment verification error:", err);
-    res.status(502).json({ error: "Payment verification failed. Please try again." });
-  }
-}));
-
-// Starts the one-time 30-day free trial. This is a deliberate, explicit action —
-// the owner clicks "Start Free Trial" themselves; the trial is never granted as
-// a side effect of any other request (e.g. creating a listing). Still fully
-// server-verified: hasUsedFreeTrial and the live subscription view are re-checked
-// here, never trusted from the client.
-app.post("/api/subscription/start-trial", requireAuth, ah(async (req, res) => {
-  const user = await store.getUserById(req.user.sub);
-  if (!user) return res.status(404).json({ error: "User not found." });
-  if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts can start a free trial." });
-  if (user.hasUsedFreeTrial) return res.status(403).json({ error: "You've already used your free trial. Subscribe to a plan to continue." });
-  const view = computeSubscriptionView(user);
-  if (view.isListingVisible) return res.status(400).json({ error: "You already have an active trial or subscription." });
-  const updated = await store.grantFreeTrial(user.id);
-  res.json({ user: publicUser(updated) });
-}));
-
-// Cancels an active paid subscription (the demo has no billing-provider webhook,
-// so cancellation takes effect immediately rather than at period end).
-app.post("/api/subscription/cancel", requireAuth, ah(async (req, res) => {
-  const user = await store.getUserById(req.user.sub);
-  if (!user) return res.status(404).json({ error: "User not found." });
-  if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts have a subscription." });
-  const view = computeSubscriptionView(user);
-  if (view.status !== "active") return res.status(400).json({ error: "There's no active paid subscription to cancel." });
-  const updated = await store.cancelSubscription(user.id);
-  res.json({ user: publicUser(updated) });
-}));
-
-// ---------------------------------------------------------
-// Subscription status — the single endpoint the owner dashboard polls for its
-// status card, trial countdown and one-time trial reminders. Every value here is
-// computed live from real timestamps, never a client-supplied or manually
-// decremented number.
-// ---------------------------------------------------------
+// Subscription status — kept as a lightweight endpoint (rather than removed)
+// since the owner dashboard still reads it to know it always has full access.
 app.get("/api/subscription/me", requireAuth, ah(async (req, res) => {
   const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
   const view = computeSubscriptionView(user);
-
-  let reminder = null;
-  const candidate = reminderForView(view);
-  if (candidate && !(user.subscription.remindersSent || {})[candidate.key]) {
-    reminder = candidate;
-    await store.markReminderSent(user.id, candidate.key);
-  }
-
-  res.json({
-    subscriptionView: view,
-    plans: { prices: PLAN_PRICES, features: PLAN_FEATURES },
-    reminder,
-  });
+  res.json({ subscriptionView: view, reminder: null });
 }));
 
 // A hostel can offer several room occupancy categories at once (e.g. "Two in a room" at
@@ -516,14 +398,12 @@ function normalizeWalkthrough(input, cap) {
 }
 
 function enforcePlanOnListingPayload(view, l) {
-  const { features, effectivePlan } = view;
+  const { features } = view;
   const images = Array.isArray(l.images) ? l.images : [];
   const galleryCap = features.maxPhotos;
   if (images.length > galleryCap) {
-    const nextPlan = effectivePlan === "Featured" ? null : effectivePlan === "Basic" ? "Premium" : "Featured";
-    const nextLimit = nextPlan ? `up to ${PLAN_FEATURES[nextPlan].maxPhotos} photos` : null;
     return {
-      error: `You've reached the ${galleryCap}-photo limit on the ${effectivePlan || "Basic"} plan.${nextPlan ? ` Upgrade to ${nextPlan} for ${nextLimit}.` : ""}`,
+      error: `You've reached the ${galleryCap}-photo limit per listing.`,
     };
   }
   return {
@@ -758,7 +638,7 @@ async function withPriority(inquiries) {
   const featuresForOwner = async (ownerId) => {
     if (!ownerFeaturesCache.has(ownerId)) {
       const owner = await store.getUserById(ownerId);
-      ownerFeaturesCache.set(ownerId, owner ? computeSubscriptionView(owner).features : PLAN_FEATURES.Basic);
+      ownerFeaturesCache.set(ownerId, owner ? computeSubscriptionView(owner).features : FULL_FEATURES);
     }
     return ownerFeaturesCache.get(ownerId);
   };
@@ -897,10 +777,6 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
   const inquiries = await store.getInquiries();
 
   const byRole = { Student: 0, Parent: 0, Owner: 0, Admin: 0 };
-  let activeSubscriptions = 0;
-  const tierCounts = { Basic: 0, Premium: 0, Featured: 0 };
-  const statusCounts = { trial: 0, active: 0, expired: 0, cancelled: 0, none: 0, payment_failed: 0 };
-  let estimatedRevenue = 0;
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
   let newSignups30d = 0;
 
@@ -912,13 +788,6 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
     if (u.role !== "Owner") continue;
 
     const view = computeSubscriptionView(u);
-    statusCounts[view.status] = (statusCounts[view.status] || 0) + 1;
-    if (view.status === "active") {
-      activeSubscriptions += 1;
-      if (tierCounts[view.plan] !== undefined) tierCounts[view.plan] += 1;
-      estimatedRevenue += SUBSCRIPTION_AMOUNTS[view.plan] || 0;
-    }
-
     const ownerListings = await store.getListingsByOwner(u.id);
     const visibleIds = visibleListingIdsForOwner(u, ownerListings);
     ownersOverview.push({
@@ -927,24 +796,13 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
       ownerEmail: u.email,
       listings: ownerListings.map((l) => ({ id: l.id, name: l.name, status: visibleIds.has(l.id) ? "Active" : "Paused" })),
       maxListings: maxListingsForView(view),
-      plan: view.plan,
-      status: view.status,
-      trialStartedAt: view.trialStartedAt,
-      trialEndsAt: view.trialEndsAt,
-      daysRemaining: view.daysRemaining,
       subscriptionStartedAt: view.subscriptionStartedAt,
-      nextBillingDate: view.nextBillingDate,
-      cancelledAt: view.cancelledAt,
     });
   }
 
   const inquiriesThirtyDays = inquiries.filter(
     (i) => i.createdAt && new Date(i.createdAt).getTime() >= thirtyDaysAgo
   ).length;
-
-  const ownerCount = byRole.Owner || 0;
-  const avgRevenuePerActiveOwner = activeSubscriptions ? Math.round((estimatedRevenue / activeSubscriptions) * 100) / 100 : 0;
-  const ownerConversionRate = ownerCount ? Math.round((activeSubscriptions / ownerCount) * 1000) / 10 : 0;
 
   const recentSignups = [...users]
     .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
@@ -964,12 +822,6 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
     featuredListings: listings.filter((l) => l.featured).length,
     totalInquiries: inquiries.length,
     inquiries30d: inquiriesThirtyDays,
-    activeSubscriptions,
-    tierCounts,
-    statusCounts,
-    estimatedRevenueGHS: estimatedRevenue,
-    avgRevenuePerActiveOwner,
-    ownerConversionRate,
     recentSignups,
     topListings,
     ownersOverview,
