@@ -791,40 +791,26 @@ function ContactModal({ listing, roomType, onClose }) {
         <h3 style={{ color: C.ink }} className="font-bold text-lg mb-1">Contact about this room</h3>
         <p style={{ color: C.gray600 }} className="text-sm mb-4">{listing.name}{roomType ? ` · ${roomType}` : ""}</p>
 
-               {sent ? (
-          <div style={{ background: C.blueLight }} className="rounded-md p-4 text-center">
-            <Check className="mx-auto mb-2" color={C.navy} />
-            <p style={{ color: C.navy }} className="font-semibold text-sm">
-              Booking fee paid and inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
-            </p>
-           {sent ? (
+        {sent ? (
           <div style={{ background: C.blueLight }} className="rounded-md p-4 text-center">
             <Check className="mx-auto mb-2" color={C.navy} />
             <p style={{ color: C.navy }} className="font-semibold text-sm">
               Booking fee paid and inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
             </p>
             {sentWaLink && (
-              
-             {sent ? (
-  <div style={{ background: C.blueLight }} className="rounded-md p-4 text-center">
-    <Check className="mx-auto mb-2" color={C.navy} />
-    <p style={{ color: C.navy }} className="font-semibold text-sm">
-      Booking fee paid and inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
-    </p>
-    {sentWaLink && (
-      
-        href={sentWaLink}
-        target={isMobile ? undefined : "_blank"}
-        rel="noopener noreferrer"
-        style={{ background: C.blue }}
-        className="mt-3 inline-flex items-center justify-center gap-1.5 text-white text-sm font-semibold py-2 px-4 rounded-md"
-      >
-        <MessageCircle size={16} /> WhatsApp didn't open? Tap here
-      </a>
-    )}
-  </div>
-) : (
-  <>
+              <a
+                href={sentWaLink}
+                target={isMobile ? undefined : "_blank"}
+                rel="noopener noreferrer"
+                style={{ background: C.blue }}
+                className="mt-3 inline-flex items-center justify-center gap-1.5 text-white text-sm font-semibold py-2 px-4 rounded-md"
+              >
+                <MessageCircle size={16} /> WhatsApp didn't open? Tap here
+              </a>
+            )}
+          </div>
+        ) : (
+          <>
             {mailLink && (
               <div className="flex gap-2 mb-4">
                 <a href={mailLink} style={{ borderColor: C.border, color: C.navy }} className="flex-1 border text-sm font-semibold py-2.5 rounded-md flex items-center justify-center gap-1.5">
