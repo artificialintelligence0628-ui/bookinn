@@ -288,21 +288,21 @@ const loginLimiter = rateLimit({
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many login attempts. Please wait a few minutes and try again." },
+  message: { error: "Too many login attempts. Please wait 15 minutes and try again." },
 });
 const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 10,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many accounts created from this network. Please try again later." },
+message: { error: "Too many accounts created from this network. Please wait 1 hour and try again." },
 });
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,
   standardHeaders: true,
   legacyHeaders: false,
-  message: { error: "Too many requests. Please wait a few minutes and try again." },
+  message: { error: "Too many requests. Please wait 15 minutes and try again." },
 });
 
 // ---------------------------------------------------------
