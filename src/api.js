@@ -60,7 +60,8 @@ export const api = {
   getMyListings: (token) => request("/listings/mine", { token }),
   // Universities — public read, admin-only write.
   getUniversities: () => request("/universities"),
-  addUniversity: (name, token) => request("/admin/universities", { method: "POST", body: { name }, token }),
+    addUniversity: (name, token) => request("/admin/universities", { method: "POST", body: { name }, token }),
+  renameUniversity: (id, name, token) => request(`/admin/universities/${id}`, { method: "PATCH", body: { name }, token }),
   deleteUniversity: (id, token) => request(`/admin/universities/${id}`, { method: "DELETE", token }),
   // Platform admin only (role === "Admin") — site-wide stats and user directory.
   getAdminUsers: (token) => request("/admin/users", { token }),
