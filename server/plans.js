@@ -13,7 +13,6 @@ export const FULL_FEATURES = {
   videoTour: true,
   whatsappEnquiries: true,
   analytics: true,
-  verifiedBadge: true,
   higherSearchRanking: true,
   topSearch: true,
   homepagePlacement: true,
