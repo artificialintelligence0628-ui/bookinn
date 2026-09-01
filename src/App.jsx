@@ -300,7 +300,7 @@ function Hero({ searchQuery, setSearchQuery }) {
             <MapPin size={12} /> Koforidua Technical University
           </span>
         </div>
-        <h1 className="text-white text-2xl md:text-4xl font-extrabold mb-2">Find student housing near your campus</h1>
+        <h1 className="text-white text-2xl md:text-4xl font-extrabold mb-2">Find student accommodation near your campus</h1>
         <p style={{ color: "rgba(255,255,255,0.85)" }} className="text-sm md:text-base mb-6">
           Compare hostels, self-contained units and shared apartments around your University — contactable in one tap.
         </p>
