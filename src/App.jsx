@@ -498,10 +498,9 @@ function ListingCard({ listing, isFav, toggleFav, onOpen }) {
     <div style={{ borderColor: C.border }} className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition flex flex-col sm:flex-row">
       <div className="relative sm:w-56 shrink-0">
         <img src={img(listing.image, 500)} alt={listing.name} loading="lazy" className="w-full h-44 sm:h-full object-cover" />
-        {(listing.featured || listing.verified) && (
+               {listing.featured && (
           <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
-            {listing.featured && <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Featured</span></Badge>}
-            {listing.verified && <Badge tone="blue"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Verified</span></Badge>}
+            <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Featured</span></Badge>
           </div>
         )}
         <button
@@ -940,8 +939,7 @@ function ReviewForm({ listingId, onSubmitted }) {
             {roomOptions.map((r) => <Badge key={r.roomType}>{r.roomType}</Badge>)}
             <Badge>{listing.bath}</Badge>
             {listing.kitchen && <Badge tone="green">Shared kitchen</Badge>}
-            {listing.featured && <Badge tone="yellow">Featured listing</Badge>}
-            {listing.verified && <Badge tone="blue"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Verified</span></Badge>}
+                       {listing.featured && <Badge tone="yellow">Featured listing</Badge>}
           </div>
 
           <h3 style={{ color: C.ink }} className="font-bold text-base mb-2">About this room</h3>
@@ -1161,8 +1159,8 @@ function PricingView({ onGoToDashboard }) {
           <h3 style={{ color: C.ink }} className="font-bold text-lg mb-3">What you get</h3>
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {[
-              "Up to 3 hostel/apartment listings", "Up to 20 photos per listing", "Video tour", "Virtual walkthrough",
-              "WhatsApp enquiries", "Top-of-search placement", "Homepage placement", "Verified badge", "Analytics",
+                           "Up to 3 hostel/apartment listings", "Up to 20 photos per listing", "Video tour", "Virtual walkthrough",
+              "WhatsApp enquiries", "Top-of-search placement", "Homepage placement", "Analytics",
             ].map((f) => (
               <li key={f} style={{ color: C.gray600 }} className="text-sm flex items-start gap-2">
                 <Check size={15} color={C.blue} className="mt-0.5 shrink-0" /> {f}
