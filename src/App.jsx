@@ -291,18 +291,22 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
 /* ---------------------------------------------------------
    HERO + SEARCH
 --------------------------------------------------------- */
-function Hero({ searchQuery, setSearchQuery }) {
+function Hero({ searchQuery, setSearchQuery, studentUniversity }) {
   return (
     <div style={{ background: `linear-gradient(180deg, ${C.navy} 0%, ${C.blue} 100%)` }} className="pb-16 pt-8 md:pt-12">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
-        <div className="flex items-center gap-2 mb-3">
-          <span style={{ background: "rgba(255,255,255,0.15)", color: C.white }} className="text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit">
-            <MapPin size={12} /> Koforidua Technical University
-          </span>
-        </div>
+        {studentUniversity && (
+          <div className="flex items-center gap-2 mb-3">
+            <span style={{ background: "rgba(255,255,255,0.15)", color: C.white }} className="text-xs font-semibold px-2.5 py-1 rounded-full flex items-center gap-1.5 w-fit">
+              <MapPin size={12} /> {studentUniversity}
+            </span>
+          </div>
+        )}
         <h1 className="text-white text-2xl md:text-4xl font-extrabold mb-2">Find student accommodation near your campus</h1>
         <p style={{ color: "rgba(255,255,255,0.85)" }} className="text-sm md:text-base mb-6">
-          Compare hostels, self-contained units and shared apartments around your University — contactable in one tap.
+          {studentUniversity
+            ? `Compare hostels, self-contained units and shared apartments around ${studentUniversity} — contactable in one tap.`
+            : "Compare hostels, self-contained units and shared apartments near university campuses across Ghana — contactable in one tap."}
         </p>
 
         <div style={{ background: C.white }} className="rounded-lg shadow-lg p-3 md:p-4 flex flex-col md:flex-row gap-2">
@@ -600,7 +604,7 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
 
   return (
     <div>
-      <Hero searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
+      <Hero searchQuery={searchQuery} setSearchQuery={setSearchQuery} studentUniversity={studentUniversity} />
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 -mt-8 pb-16">
         {studentUniversity && (
