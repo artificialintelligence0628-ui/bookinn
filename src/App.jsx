@@ -300,9 +300,9 @@ function Hero({ searchQuery, setSearchQuery }) {
             <MapPin size={12} /> Koforidua Technical University
           </span>
         </div>
-        <h1 className="text-white text-2xl md:text-4xl font-extrabold mb-2">Find student accommodation near your campus</h1>
+        <h1 className="text-white text-2xl md:text-4xl font-extrabold mb-2">Find student housing near KTU</h1>
         <p style={{ color: "rgba(255,255,255,0.85)" }} className="text-sm md:text-base mb-6">
-          Compare hostels, self-contained units and shared apartments around your University — contactable in one tap.
+          Compare hostels, self-contained units and shared apartments around Koforidua Technical University — verified by agents, contactable in one tap.
         </p>
 
         <div style={{ background: C.white }} className="rounded-lg shadow-lg p-3 md:p-4 flex flex-col md:flex-row gap-2">
@@ -2917,6 +2917,36 @@ function PlatformAdminView({ token, onManageOwner }) {
     }
   };
 
+  // Inline rename — click the pencil to turn a row into a text input.
+  const [editingUniversityId, setEditingUniversityId] = useState(null);
+  const [editingUniversityName, setEditingUniversityName] = useState("");
+  const [renameBusy, setRenameBusy] = useState(false);
+  const startUniversityEdit = (u) => {
+    setUniversityError("");
+    setEditingUniversityId(u.id);
+    setEditingUniversityName(u.name);
+  };
+  const cancelUniversityEdit = () => {
+    setEditingUniversityId(null);
+    setEditingUniversityName("");
+  };
+  const saveUniversityEdit = async (u) => {
+    const name = editingUniversityName.trim();
+    if (!name) return;
+    if (name === u.name) { cancelUniversityEdit(); return; }
+    setRenameBusy(true);
+    setUniversityError("");
+    try {
+      const { university } = await api.renameUniversity(u.id, name, token);
+      setUniversities((prev) => prev.map((x) => (x.id === university.id ? university : x)).sort((a, b) => a.name.localeCompare(b.name)));
+      cancelUniversityEdit();
+    } catch (err) {
+      setUniversityError(err.message);
+    } finally {
+      setRenameBusy(false);
+    }
+  };
+
   const overviewStats = stats ? [
     { label: "Total users", value: stats.totalUsers, icon: Users },
     { label: "Students", value: stats.usersByRole.Student || 0, icon: GraduationCap },
@@ -3198,15 +3228,51 @@ function PlatformAdminView({ token, onManageOwner }) {
                 )}
                 {universities.map((u) => (
                   <div key={u.id} className="py-2.5 flex items-center justify-between gap-3">
-                    <span style={{ color: C.ink }} className="text-sm font-medium truncate">{u.name}</span>
-                    <button
-                      onClick={() => removeUniversity(u)}
-                      disabled={deletingUniversityId === u.id}
-                      style={{ color: "#b3261e" }}
-                      className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60 shrink-0"
-                    >
-                      {deletingUniversityId === u.id ? "Removing…" : "Remove"}
-                    </button>
+                    {editingUniversityId === u.id ? (
+                      <>
+                        <input
+                          value={editingUniversityName}
+                          onChange={(e) => setEditingUniversityName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") saveUniversityEdit(u);
+                            if (e.key === "Escape") cancelUniversityEdit();
+                          }}
+                          autoFocus
+                          style={{ borderColor: C.border }}
+                          className="flex-1 min-w-0 border rounded-md px-2.5 py-1.5 text-sm outline-none"
+                        />
+                        <div className="flex items-center gap-3 shrink-0">
+                          <button
+                            onClick={() => saveUniversityEdit(u)}
+                            disabled={renameBusy || !editingUniversityName.trim()}
+                            style={{ color: C.blue }}
+                            className="text-xs font-semibold hover:underline disabled:opacity-60"
+                          >
+                            {renameBusy ? "Saving…" : "Save"}
+                          </button>
+                          <button onClick={cancelUniversityEdit} style={{ color: C.gray600 }} className="text-xs font-semibold hover:underline">
+                            Cancel
+                          </button>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <span style={{ color: C.ink }} className="text-sm font-medium truncate">{u.name}</span>
+                        <div className="flex items-center gap-3 shrink-0">
+                          <button onClick={() => startUniversityEdit(u)} title={`Edit ${u.name}`} aria-label={`Edit ${u.name}`}>
+                            <Pencil size={14} color={C.gray600} className="cursor-pointer" />
+                          </button>
+                          <button
+                            onClick={() => removeUniversity(u)}
+                            disabled={deletingUniversityId === u.id}
+                            style={{ color: "#b3261e" }}
+                            className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+                          >
+                            {deletingUniversityId === u.id ? "Removing…" : "Remove"}
+                          </button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
