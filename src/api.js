@@ -37,14 +37,16 @@ async function uploadFile(file, token) {
 }
 
 export const api = {
-  getListings: () => request("/listings"),
+  // Pass a university to scope results to just that campus (used for logged-in
+  // students so they only ever see their own school's hostels/apartments).
+  getListings: (university) => request(university ? `/listings?university=${encodeURIComponent(university)}` : "/listings"),
   uploadFile,
   addListing: (listing, token) => request("/listings", { method: "POST", body: listing, token }),
   updateListing: (id, listing, token) => request(`/listings/${id}`, { method: "PUT", body: listing, token }),
   deleteListing: (id, token) => request(`/listings/${id}`, { method: "DELETE", token }),
   addReview: (id, review) => request(`/listings/${id}/reviews`, { method: "POST", body: review }),
   recordView: (id) => request(`/listings/${id}/view`, { method: "POST" }).catch(() => {}),
-  signup: (name, email, password, role) => request("/auth/signup", { method: "POST", body: { name, email, password, role } }),
+  signup: (name, email, password, role, university) => request("/auth/signup", { method: "POST", body: { name, email, password, role, university } }),
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
   me: (token) => request("/auth/me", { token }),
   forgotPassword: (email) => request("/auth/forgot-password", { method: "POST", body: { email } }),
@@ -56,6 +58,10 @@ export const api = {
   setConfirmedResident: (id, confirmed, token) => request(`/inquiries/${id}/confirm`, { method: "PATCH", body: { confirmed }, token }),
   getOwnerStats: (token) => request("/owner/stats", { token }),
   getMyListings: (token) => request("/listings/mine", { token }),
+  // Universities — public read, admin-only write.
+  getUniversities: () => request("/universities"),
+  addUniversity: (name, token) => request("/admin/universities", { method: "POST", body: { name }, token }),
+  deleteUniversity: (id, token) => request(`/admin/universities/${id}`, { method: "DELETE", token }),
   // Platform admin only (role === "Admin") — site-wide stats and user directory.
   getAdminUsers: (token) => request("/admin/users", { token }),
   impersonateUser: (id, token) => request(`/admin/users/${id}/impersonate`, { method: "POST", token }),
