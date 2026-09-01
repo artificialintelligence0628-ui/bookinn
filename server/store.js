@@ -326,7 +326,7 @@ async getInquiries() {
     const { rows } = await pool.query("SELECT * FROM universities ORDER BY name ASC");
     return rows.map(mapUniversity);
   },
-  async addUniversity(name) {
+   async addUniversity(name) {
     const { rows } = await pool.query(
       "INSERT INTO universities (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING *",
       [name]
@@ -336,6 +336,22 @@ async getInquiries() {
     // caller (admin "add university" form) doesn't see a false failure.
     const { rows: existing } = await pool.query("SELECT * FROM universities WHERE lower(name) = lower($1)", [name]);
     return mapUniversity(existing[0]);
+  },
+  async renameUniversity(id, newName) {
+    const { rows: existingRows } = await pool.query("SELECT * FROM universities WHERE id = $1", [id]);
+    if (!existingRows[0]) return null;
+    const oldName = existingRows[0].name;
+    if (oldName === newName) return mapUniversity(existingRows[0]);
+    const { rows } = await pool.query(
+      "UPDATE universities SET name = $1 WHERE id = $2 RETURNING *",
+      [newName, id]
+    );
+    // listings.university and users.university store the name as plain text,
+    // not a foreign key — cascade the rename onto both so existing listings
+    // and students don't silently fall off the university they were on.
+    await pool.query("UPDATE listings SET university = $1 WHERE university = $2", [newName, oldName]);
+    await pool.query("UPDATE users SET university = $1 WHERE university = $2", [newName, oldName]);
+    return mapUniversity(rows[0]);
   },
   async deleteUniversity(id) {
     const { rowCount } = await pool.query("DELETE FROM universities WHERE id = $1", [id]);
