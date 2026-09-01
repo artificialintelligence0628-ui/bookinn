@@ -88,6 +88,22 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS verify_token_expires TIMESTAMPTZ;
 -- checks this flag.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS marketing_emails BOOLEAN NOT NULL DEFAULT true;
 
+-- ---------------------------------------------------------
+-- University scoping for students
+-- ---------------------------------------------------------
+-- A student's own campus, picked at signup, so their browse view can be
+-- scoped to hostels/apartments at their university only.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS university TEXT;
+
+-- The list of universities BookInn operates in. Editable from the platform
+-- admin dashboard (Universities tab) instead of being hardcoded, so adding a
+-- new campus doesn't require a code change/deploy.
+CREATE TABLE IF NOT EXISTS universities (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS email_templates (
   id SERIAL PRIMARY KEY,
   name TEXT NOT NULL,
