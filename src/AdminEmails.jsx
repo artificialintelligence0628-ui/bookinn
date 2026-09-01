@@ -1052,7 +1052,7 @@ export default function PlatformAdminEmails({ token }) {
     <div>
       <div className="flex items-center gap-2 mb-4">
         <Mail size={18} color={C.blue} />
-        <p style={{ color: C.gray600 }} className="text-sm">Send announcements, manage templates, and track delivery — powered by your existing Resend integration.</p>
+        <p style={{ color: C.gray600 }} className="text-sm">Send announcements, manage templates, and track delivery</p>
       </div>
 
       <ErrorBanner error={error} />
