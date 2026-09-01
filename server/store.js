@@ -18,6 +18,7 @@ function mapUser(row) {
     hasUsedFreeTrial: row.has_used_free_trial,
     createdAt: row.created_at,
     emailVerified: row.email_verified,
+    university: row.university,
   };
 }
 
@@ -68,6 +69,11 @@ function mapInquiry(row) {
     createdAt: row.created_at,
     confirmedResident: !!row.confirmed_resident,
   };
+}
+
+function mapUniversity(row) {
+  if (!row) return null;
+  return { id: row.id, name: row.name, createdAt: row.created_at };
 }
 
 const LISTING_COLUMNS = {
@@ -186,11 +192,11 @@ export const store = {
     const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
     return mapUser(rows[0]);
   },
-  async addUser({ name, email, passwordHash, role }) {
+  async addUser({ name, email, passwordHash, role, university }) {
     const { rows } = await pool.query(
-      `INSERT INTO users (name, email, password_hash, role, subscription, has_used_free_trial)
-       VALUES ($1,$2,$3,$4,$5,false) RETURNING *`,
-      [name, email, passwordHash, role || "Student", JSON.stringify(defaultSubscription())]
+      `INSERT INTO users (name, email, password_hash, role, subscription, has_used_free_trial, university)
+       VALUES ($1,$2,$3,$4,$5,false,$6) RETURNING *`,
+      [name, email, passwordHash, role || "Student", JSON.stringify(defaultSubscription()), university || null]
     );
     return mapUser(rows[0]);
   },
@@ -310,6 +316,30 @@ async getInquiries() {
       [confirmed, id]
     );
     return mapInquiry(rows[0]);
+  },
+
+  // ---- universities ----
+  // Editable list of campuses BookInn operates in — drives the signup form,
+  // the owner listing form, and student/guest browse filters. Managed from
+  // the platform admin dashboard instead of being hardcoded.
+  async getUniversities() {
+    const { rows } = await pool.query("SELECT * FROM universities ORDER BY name ASC");
+    return rows.map(mapUniversity);
+  },
+  async addUniversity(name) {
+    const { rows } = await pool.query(
+      "INSERT INTO universities (name) VALUES ($1) ON CONFLICT (name) DO NOTHING RETURNING *",
+      [name]
+    );
+    if (rows[0]) return mapUniversity(rows[0]);
+    // Name already existed — return the existing row instead of null so the
+    // caller (admin "add university" form) doesn't see a false failure.
+    const { rows: existing } = await pool.query("SELECT * FROM universities WHERE lower(name) = lower($1)", [name]);
+    return mapUniversity(existing[0]);
+  },
+  async deleteUniversity(id) {
+    const { rowCount } = await pool.query("DELETE FROM universities WHERE id = $1", [id]);
+    return rowCount > 0;
   },
 
   // ---- Email & Communication Center ----
