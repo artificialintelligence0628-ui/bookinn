@@ -2222,10 +2222,6 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
           </PrimaryButton>
           <GhostButton full onClick={onGuest}>Continue as guest</GhostButton>
         </div>
-
-        <p style={{ color: C.gray600 }} className="text-xs text-center mt-4">
-          Demo mode — accounts are stored only in this browser session.
-        </p>
         <p style={{ color: C.gray600 }} className="text-xs text-center mt-2">
           Property owner? <button onClick={() => setView("pricing")} style={{ color: C.blue }} className="font-semibold hover:underline">List your property</button>
         </p>
