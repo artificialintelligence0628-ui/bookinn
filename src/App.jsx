@@ -610,10 +610,6 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
         )}
         {!loading && featuredListings.length > 0 && (
           <div className="mb-6">
-            <div className="flex items-center gap-2 mb-3">
-              <Sparkles size={16} color={C.yellow} />
-              <h2 style={{ color: C.ink }} className="font-bold text-lg">Featured properties</h2>
-            </div>
             {/* ListingCard is a wide horizontal layout (image left, details right) —
                 cramming it into a multi-column grid left no room for the text, cutting
                 it off mid-word. A horizontal scroller gives each card its full natural
