@@ -1,6 +1,8 @@
 import "dotenv/config";
 import express from "express";
 import cors from "cors";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import multer from "multer";
@@ -22,12 +24,77 @@ import { verifyResendWebhook, handleResendEvent } from "./resendWebhook.js";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const PORT = process.env.PORT || 4000;
-// In a real production deployment, set JWT_SECRET as a real environment
-// variable and never commit a secret to source control.
-const JWT_SECRET = process.env.JWT_SECRET || "bookinn-dev-secret-change-me";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+// Secrets and admin credentials must come from real environment variables in
+// production — no silent fallback to a hardcoded/placeholder value. A missing
+// or still-default value here means anyone who's seen this source (e.g. a
+// public repo) could forge login tokens or log in as Admin, so the server
+// refuses to boot rather than run insecurely.
+const PLACEHOLDER_SECRETS = new Set([
+  "change-me-to-a-long-random-string",
+  "bookinn-dev-secret-change-me",
+]);
+const PLACEHOLDER_ADMIN_PASSWORDS = new Set(["admin12345", "BBII88@.com"]);
+const PLACEHOLDER_ADMIN_EMAILS = new Set(["admin@bookinn.app", "bookinn@gmail.com"]);
+
+function requireEnv(name, value, placeholders) {
+  if (!IS_PRODUCTION) return value; // dev/local: fall back is fine
+  if (!value || (placeholders && placeholders.has(value))) {
+    console.error(
+      `FATAL: ${name} is missing or still set to a placeholder value. ` +
+      `Set a real, private value for ${name} in your production environment before starting the server.`
+    );
+    process.exit(1);
+  }
+  return value;
+}
+
+const JWT_SECRET = requireEnv("JWT_SECRET", process.env.JWT_SECRET, PLACEHOLDER_SECRETS)
+  || "bookinn-dev-secret-change-me"; // only reachable outside production
 
 const app = express();
-app.use(cors());
+app.set("trust proxy", 1); // behind Render's proxy — needed for correct client IPs (rate limiting, logs)
+
+// helmet() with its strict defaults would break this app's real, legitimate
+// external resources: the Inter font loaded via an inline <style>/@import
+// from Google Fonts, and listing photos/videos served from Cloudinary. So the
+// CSP is spelled out explicitly instead of left at helmet's `default-src
+// 'self'` — every allowance below maps to something the app actually does.
+app.use(helmet({
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
+      mediaSrc: ["'self'", "https://res.cloudinary.com"],
+      // 'unsafe-inline' is needed because the app sets React inline style={{}}
+      // attributes throughout, and injects the Google Fonts @import via a
+      // literal <style> tag — both are CSP "style-src" territory.
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      fontSrc: ["'self'", "https://fonts.gstatic.com"],
+      scriptSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'self'"],
+    },
+  },
+}));
+
+// Only allow the real BookInn frontend (and localhost during development) to
+// call this API from a browser — prevents another site from riding an
+// authenticated visitor's session against your API.
+const allowedOrigins = [
+  process.env.FRONTEND_URL,
+  "http://localhost:5173", // Vite dev server
+  "http://localhost:4000",
+].filter(Boolean);
+app.use(cors({
+  origin(origin, callback) {
+    // Same-origin requests, curl, server-to-server calls, etc. have no Origin header — allow those.
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    return callback(new Error("Not allowed by CORS"));
+  },
+}));
 // Listing photos/video now go through the multipart /api/uploads route above and
 // straight to Cloudinary, so JSON bodies are just URLs + text — 1mb is generous.
 // The `verify` hook stashes the raw request body so the Resend webhook route
@@ -50,8 +117,10 @@ const AVAILABILITY_STATUSES = ["Space available", "Partly booked", "Fully booked
 
 // Credentials for the platform admin account, seeded automatically the first time the
 // server starts (only if no Admin account exists yet). Override via .env in production.
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || "admin@bookinn.app";
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "admin12345";
+const ADMIN_EMAIL = requireEnv("ADMIN_EMAIL", process.env.ADMIN_EMAIL, PLACEHOLDER_ADMIN_EMAILS)
+  || "admin@bookinn.app"; // only reachable outside production
+const ADMIN_PASSWORD = requireEnv("ADMIN_PASSWORD", process.env.ADMIN_PASSWORD, PLACEHOLDER_ADMIN_PASSWORDS)
+  || "admin12345"; // only reachable outside production
 
 // Wraps an async route/middleware so a rejected promise (e.g. a database
 // error) is forwarded to Express's error handler instead of crashing the
@@ -209,13 +278,41 @@ app.post("/api/uploads", requireAuth, upload.single("file"), ah(async (req, res)
 }));
 
 // ---------------------------------------------------------
+// Auth rate limiting — brute-force / credential-stuffing protection.
+// Login gets the tightest limit since it's guessable-password territory;
+// signup/forgot-password/resend are limited too so they can't be used to
+// spam-create accounts or flood someone's inbox.
+// ---------------------------------------------------------
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many login attempts. Please wait a few minutes and try again." },
+});
+const signupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many accounts created from this network. Please try again later." },
+});
+const passwordResetLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests. Please wait a few minutes and try again." },
+});
+
+// ---------------------------------------------------------
 // Auth
 // ---------------------------------------------------------
-app.post("/api/auth/signup", ah(async (req, res) => {
+app.post("/api/auth/signup", signupLimiter, ah(async (req, res) => {
   const { name, email, password, role, university } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: "Name, email and password are required." });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: "Enter a valid email address." });
-  if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+  if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
   if (role && !ROLES.includes(role)) return res.status(400).json({ error: "Invalid account type." });
   if (await store.getUserByEmail(email)) return res.status(409).json({ error: "An account with this email already exists." });
   // Students pick their campus at signup so their browse view can be scoped
@@ -254,7 +351,7 @@ app.post("/api/auth/signup", ah(async (req, res) => {
 // Forgot password — always responds the same way whether or not the email is
 // registered, so this endpoint can't be used to check which emails have
 // BookInn accounts.
-app.post("/api/auth/forgot-password", ah(async (req, res) => {
+app.post("/api/auth/forgot-password", passwordResetLimiter, ah(async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: "Email is required." });
   const user = await store.getUserByEmail(email);
@@ -273,10 +370,10 @@ app.post("/api/auth/forgot-password", ah(async (req, res) => {
 
 // Reset password — the token proves the person clicked the emailed link;
 // it's single-use (store.resetPassword clears it) and expires after 1 hour.
-app.post("/api/auth/reset-password", ah(async (req, res) => {
+app.post("/api/auth/reset-password", passwordResetLimiter, ah(async (req, res) => {
   const { token, password } = req.body || {};
   if (!token || !password) return res.status(400).json({ error: "A token and new password are required." });
-  if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
+  if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
   const user = await store.getUserByResetToken(token);
   if (!user) return res.status(400).json({ error: "This reset link is invalid or has expired. Request a new one." });
   const passwordHash = await bcrypt.hash(password, 10);
@@ -300,7 +397,7 @@ app.post("/api/auth/verify-email", ah(async (req, res) => {
 // forgot-password: always responds the same way whether or not the email is
 // registered, and also whether or not it's already verified, so this
 // endpoint can't be used to check who has an account.
-app.post("/api/auth/resend-verification", ah(async (req, res) => {
+app.post("/api/auth/resend-verification", passwordResetLimiter, ah(async (req, res) => {
   const { email } = req.body || {};
   if (!email) return res.status(400).json({ error: "Email is required." });
   const user = await store.getUserByEmail(email);
@@ -317,7 +414,7 @@ app.post("/api/auth/resend-verification", ah(async (req, res) => {
   res.json({ message: "If an account exists for that email and isn't verified yet, a new confirmation link has been sent." });
 }));
 
-app.post("/api/auth/login", ah(async (req, res) => {
+app.post("/api/auth/login", loginLimiter, ah(async (req, res) => {
   const { email, password } = req.body || {};
   if (!email || !password) return res.status(400).json({ error: "Email and password are required." });
   const user = await store.getUserByEmail(email);
