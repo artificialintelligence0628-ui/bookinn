@@ -40,6 +40,10 @@ app.use(express.json({
 
 const ROLES = ["Owner", "Student", "Parent"]; // roles the public signup form is allowed to create
 const ADMIN_ROLE = "Admin"; // never accepted from public /auth/signup — seeded below instead
+// The starting university, seeded into the `universities` table on first boot
+// if the table is empty. From then on the list is managed via the platform
+// admin dashboard (Universities tab) — see ensureUniversitySeeded() below.
+const DEFAULT_UNIVERSITY = "Koforidua Technical University";
 const HOSTEL_ROOM_TYPES = ["One in a room", "Two in a room", "Three in a room", "Four in a room", "Six in a room"];
 const APARTMENT_ROOM_TYPES = ["Self-contained", "Shared Apartment"];
 
@@ -65,6 +69,7 @@ function publicUser(user) {
     hasUsedFreeTrial: !!user.hasUsedFreeTrial,
     createdAt: user.createdAt,
     emailVerified: !!user.emailVerified,
+    university: user.university || null,
   };
 }
 
@@ -206,15 +211,28 @@ app.post("/api/uploads", requireAuth, upload.single("file"), ah(async (req, res)
 // Auth
 // ---------------------------------------------------------
 app.post("/api/auth/signup", ah(async (req, res) => {
-  const { name, email, password, role } = req.body || {};
+  const { name, email, password, role, university } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: "Name, email and password are required." });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: "Enter a valid email address." });
   if (password.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters." });
   if (role && !ROLES.includes(role)) return res.status(400).json({ error: "Invalid account type." });
   if (await store.getUserByEmail(email)) return res.status(409).json({ error: "An account with this email already exists." });
+  // Students pick their campus at signup so their browse view can be scoped
+  // to hostels/apartments at that university only.
+  const resolvedRole = role || "Student";
+  if (resolvedRole === "Student") {
+    if (!university) return res.status(400).json({ error: "Select your university." });
+    const universities = await store.getUniversities();
+    if (!universities.some((u) => u.name === university)) {
+      return res.status(400).json({ error: "Select your university." });
+    }
+  }
 
   const passwordHash = await bcrypt.hash(password, 10);
-  const user = await store.addUser({ name, email, passwordHash, role });
+  const user = await store.addUser({
+    name, email, passwordHash, role,
+    university: resolvedRole === "Student" ? university : null,
+  });
 
   // Sends a "confirm your email" link. A failure here (e.g. Resend not yet
   // configured) is logged but never blocks account creation — the person can
@@ -470,11 +488,16 @@ app.get("/api/listings", ah(async (req, res) => {
     if (!owner) return;
     visibleListingIdsForOwner(owner, ownerListings).forEach((id) => visibleIds.add(id));
   });
-  const listings = all
+  let listings = all
     .filter((l) => visibleIds.has(l.id))
     .map((l) => toPublicListing(l, ownerById.get(l.ownerId)))
     .filter(Boolean)
     .sort((a, b) => b.searchPriority - a.searchPriority);
+  // Optional ?university= filter — used to scope a logged-in student's browse
+  // view to their own campus so they never see (or open) another school's listings.
+  if (req.query.university) {
+    listings = listings.filter((l) => l.university === req.query.university);
+  }
   res.json({ listings });
 }));
 
@@ -522,7 +545,7 @@ app.post("/api/listings", requireAuth, requireCanCreateListing, ah(async (req, r
     price: rooms.price,
     bath: l.bath || "Shared bath",
     kitchen: !!l.kitchen,
-    university: l.university || "Koforidua Technical University",
+    university: l.university || DEFAULT_UNIVERSITY,
     distance: l.distance || "New listing",
     pricingPeriod: l.pricingPeriod || "Per semester",
     rating: l.rating ?? 0,
@@ -570,7 +593,7 @@ app.put("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing
     price: rooms.price,
     bath: l.bath || "Shared bath",
     kitchen: !!l.kitchen,
-    university: l.university || "Koforidua Technical University",
+    university: l.university || DEFAULT_UNIVERSITY,
     distance: l.distance || "New listing",
     pricingPeriod: l.pricingPeriod || "Per semester",
     featured: planCheck.featured,
@@ -749,6 +772,41 @@ app.get("/api/owner/stats", requireAuth, ah(async (req, res) => {
     estimatedRevenueGHS,
     analyticsLocked: false,
   });
+}));
+
+// ---------------------------------------------------------
+// Universities — public read (signup form, owner listing form, guest/student
+// filters), admin-only write (Universities tab on the platform admin dashboard).
+// ---------------------------------------------------------
+app.get("/api/universities", ah(async (req, res) => {
+  const universities = await store.getUniversities();
+  res.json({ universities });
+}));
+
+app.post("/api/admin/universities", requireAuth, requireAdmin, ah(async (req, res) => {
+  const name = (req.body?.name || "").trim();
+  if (!name) return res.status(400).json({ error: "University name is required." });
+  const university = await store.addUniversity(name);
+  res.status(201).json({ university });
+}));
+
+app.delete("/api/admin/universities/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const universities = await store.getUniversities();
+  const target = universities.find((u) => u.id === id);
+  if (!target) return res.status(404).json({ error: "University not found." });
+  // Block deleting a university that's still in use — otherwise existing
+  // listings/students are left pointing at a campus that no longer appears
+  // anywhere in the app (signup dropdown, filters, etc).
+  const [listings, users] = await Promise.all([store.getListings(), store.getUsers()]);
+  const inUseByListing = listings.some((l) => l.university === target.name);
+  const inUseByStudent = users.some((u) => u.university === target.name);
+  if (inUseByListing || inUseByStudent) {
+    return res.status(400).json({ error: "Can't remove a university that still has listings or students assigned to it." });
+  }
+  const ok = await store.deleteUniversity(id);
+  if (!ok) return res.status(404).json({ error: "University not found." });
+  res.status(204).end();
 }));
 
 // ---------------------------------------------------------
@@ -1143,8 +1201,18 @@ async function ensureAdminSeeded() {
   console.log("──────────────────────────────────────────────");
 }
 
+// Seed the starting university the very first time the server boots against
+// an empty universities table — from then on the list is fully managed via
+// the platform admin dashboard, never hardcoded again.
+async function ensureUniversitySeeded() {
+  const existing = await store.getUniversities();
+  if (existing.length) return;
+  await store.addUniversity(DEFAULT_UNIVERSITY);
+}
+
 migrate()
   .then(() => ensureAdminSeeded())
+  .then(() => ensureUniversitySeeded())
   .then(() => seedEmailTemplates(store))
   .then(() => {
     app.listen(PORT, () => {
