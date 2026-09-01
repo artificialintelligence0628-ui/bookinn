@@ -2978,6 +2978,15 @@ function PlatformAdminView({ token, onManageOwner }) {
     listings.forEach((l) => { map[l.id] = l.university; });
     return map;
   }, [listings]);
+  // Owner id -> names of the hostels/apartments they've listed, for the
+  // extra column on the Owners tab.
+  const listingNamesByOwnerId = useMemo(() => {
+    const map = {};
+    listings.forEach((l) => {
+      (map[l.ownerId] ||= []).push(l.name);
+    });
+    return map;
+  }, [listings]);
 
   const filteredInquiries = inquiries.filter((inq) => {
     if (universityFilter !== "All" && listingUniversityById[inq.listingId] !== universityFilter) return false;
@@ -3008,7 +3017,15 @@ function PlatformAdminView({ token, onManageOwner }) {
     }
   };
   const ownerColumns = [
-    ...personColumns,
+    personColumns[0], // Name
+    {
+      key: "hostels", label: "Hostels/Apartments", render: (u) => {
+        const names = listingNamesByOwnerId[u.id] || [];
+        if (names.length === 0) return <span style={{ color: C.gray400 }}>—</span>;
+        return <span className="text-sm">{names.join(", ")}</span>;
+      },
+    },
+    ...personColumns.slice(1), // Email, Role, Joined
     {
       key: "manage", label: "", render: (u) => (
         <button
