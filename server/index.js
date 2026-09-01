@@ -406,7 +406,7 @@ function normalizeWalkthrough(input, cap) {
   if (!cap) return [];
   const stops = Array.isArray(input) ? input : [];
   return stops
-    .filter((s) => s && typeof s.image === "string" && s.image.startsWith("data:image"))
+    .filter((s) => s && typeof s.image === "string" && s.image.trim())
     .slice(0, cap)
     .map((s, i) => ({
       id: i + 1,
