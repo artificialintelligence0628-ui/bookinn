@@ -111,7 +111,7 @@ const REVIEWS_SAMPLE = [
 // owner now always has full feature access. Mirrors server/plans.js FULL_FEATURES.
 const FULL_FEATURES = {
   maxListings: 3, maxPhotos: 20, videoTour: true, whatsappEnquiries: true, analytics: true,
-  verifiedBadge: true, topSearch: true, homepagePlacement: true, priorityEnquiries: true,
+  topSearch: true, homepagePlacement: true, priorityEnquiries: true,
   featuredBadge: true, virtualWalkthrough: true, maxWalkthroughStops: 6, advancedAvailability: true,
 };
 
