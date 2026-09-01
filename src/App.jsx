@@ -44,7 +44,6 @@ const PROPERTY_IMAGES = {
   selfcon5,
 };
 
-const UNIVERSITIES = ["Koforidua Technical University"];
 const MAX_PRICE = 25000;
 
 // wa.me links require the full international number with no leading 0 and no
@@ -388,7 +387,7 @@ function MultiSelectDropdown({ label, options, selected, onToggle }) {
 /* ---------------------------------------------------------
    FILTER SIDEBAR
 --------------------------------------------------------- */
-function FilterSidebar({ filters, setFilters, resultCount }) {
+function FilterSidebar({ filters, setFilters, resultCount, universities, showUniversityFilter }) {
   const toggleRoomType = (rt) => {
     setFilters((f) => ({
       ...f,
@@ -412,6 +411,22 @@ function FilterSidebar({ filters, setFilters, resultCount }) {
         <SlidersHorizontal size={16} color={C.navy} />
         <h3 style={{ color: C.ink }} className="font-bold text-sm">Filter results</h3>
       </div>
+
+      {showUniversityFilter && universities?.length > 0 && (
+        <div className="mb-5">
+          <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">University</p>
+          <select
+            aria-label="Filter by university"
+            value={filters.university}
+            onChange={(e) => setFilters((f) => ({ ...f, university: e.target.value }))}
+            style={{ borderColor: C.border, color: C.ink }}
+            className="w-full border rounded-md text-sm px-3 py-2 bg-white"
+          >
+            <option value="Any">All universities</option>
+            {universities.map((u) => <option key={u} value={u}>{u}</option>)}
+          </select>
+        </div>
+      )}
 
       <div className="mb-5">
         <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Max price (GH₵{filters.priceMax.toLocaleString()})</p>
@@ -545,9 +560,9 @@ function ListingCard({ listing, isFav, toggleFav, onOpen }) {
 /* ---------------------------------------------------------
    HOME VIEW
 --------------------------------------------------------- */
-function HomeView({ favorites, toggleFav, onOpenListing, listings, loading }) {
+function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, studentUniversity, universities }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [filters, setFilters] = useState({ priceMax: MAX_PRICE, roomTypes: [], propertyTypes: [], bath: "Any", kitchen: false });
+  const [filters, setFilters] = useState({ priceMax: MAX_PRICE, roomTypes: [], propertyTypes: [], bath: "Any", kitchen: false, university: "Any" });
   const [sort, setSort] = useState("recommended");
 
   const filtered = useMemo(() => {
@@ -562,19 +577,23 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading }) {
       if (filters.propertyTypes.length && !filters.propertyTypes.includes(l.type)) return false;
       if (filters.bath !== "Any" && l.bath !== filters.bath) return false;
       if (filters.kitchen && !l.kitchen) return false;
+      // Students are already scoped to their own university server-side, so
+      // this optional dropdown is only meaningful (and only shown) for
+      // guests/parents browsing every campus at once.
+      if (!studentUniversity && filters.university !== "Any" && l.university !== filters.university) return false;
       return true;
     });
     if (sort === "price-asc") out = [...out].sort((a, b) => a.price - b.price);
     if (sort === "price-desc") out = [...out].sort((a, b) => b.price - a.price);
     if (sort === "rating") out = [...out].sort((a, b) => b.rating - a.rating);
     return out;
-  }, [listings, searchQuery, filters, sort]);
+  }, [listings, searchQuery, filters, sort, studentUniversity]);
 
   // True "homepage" state — no search or filters applied yet. This is where a
   // Featured-plan listing's homepagePlacement actually earns its keep: a dedicated
   // strip above the regular results, instead of just being a flag nothing reads.
   const isDefaultView = !searchQuery && filters.priceMax === MAX_PRICE && filters.roomTypes.length === 0
-    && filters.propertyTypes.length === 0 && filters.bath === "Any" && !filters.kitchen;
+    && filters.propertyTypes.length === 0 && filters.bath === "Any" && !filters.kitchen && filters.university === "Any";
   const featuredListings = useMemo(
     () => (isDefaultView ? listings.filter((l) => l.homepagePlacement) : []),
     [isDefaultView, listings]
@@ -585,6 +604,11 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading }) {
       <Hero searchQuery={searchQuery} setSearchQuery={setSearchQuery} />
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 -mt-8 pb-16">
+        {studentUniversity && (
+          <div style={{ background: C.blueMist, borderColor: C.border, color: C.gray600 }} className="border rounded-md px-3.5 py-2 text-xs font-medium mb-4 flex items-center gap-1.5">
+            <MapPin size={13} color={C.blue} /> Showing hostels &amp; apartments near <span style={{ color: C.ink }} className="font-semibold">{studentUniversity}</span> only.
+          </div>
+        )}
         {!loading && featuredListings.length > 0 && (
           <div className="mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -606,7 +630,7 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading }) {
         )}
 
         <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-5">
-          <FilterSidebar filters={filters} setFilters={setFilters} resultCount={filtered.length} />
+          <FilterSidebar filters={filters} setFilters={setFilters} resultCount={filtered.length} universities={universities} showUniversityFilter={!studentUniversity} />
 
           <div>
             <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
@@ -1212,9 +1236,9 @@ function NotOwnerNotice({ user, setView }) {
   );
 }
 
-function AdminView({ user, token, listings, maxListings, ownerStats, statsLoading, ownerInquiries, inquiriesLoading, addListing, updateListing, deleteListing }) {
+function AdminView({ user, token, listings, maxListings, ownerStats, statsLoading, ownerInquiries, inquiriesLoading, addListing, updateListing, deleteListing, onConfirmResident, universities }) {
   const emptyForm = {
-    name: "", university: UNIVERSITIES[0], price: "",
+    name: "", university: universities[0] || "", price: "",
     type: "Hostel", roomType: HOSTEL_ROOM_TYPES[0], bath: "Shared bath",
     kitchen: false, featured: false, amenities: [], imageData: "", galleryData: [], videoData: "",
     walkthrough: [], uploadingImage: false, uploadingGallery: false, uploadingVideo: false, uploadingWalkthrough: {},
@@ -1231,6 +1255,16 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
   const [submitError, setSubmitError] = useState("");
   const [deletingId, setDeletingId] = useState(null);
 
+  // Universities load async — if the list wasn't ready yet when this form's
+  // initial state was set, backfill the default once it arrives (only while
+  // the "add listing" form is still untouched/unopened).
+  React.useEffect(() => {
+    if (!form.university && universities.length && !editingId) {
+      setForm((f) => ({ ...f, university: universities[0] }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [universities]);
+
   const hasListing = listings.length > 0;
   const atListingLimit = listings.length >= maxListings;
   const canAddListing = !atListingLimit;
@@ -1238,10 +1272,16 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
   const features = FULL_FEATURES;
   const galleryCap = FULL_FEATURES.maxPhotos;
 
+  const residentCount = ownerInquiries.filter((i) => i.confirmedResident).length;
   const stats = [
     { label: "Active listings", value: statsLoading ? "…" : (ownerStats?.activeListings ?? 0), icon: Building2 },
     { label: "Inquiries this month", value: statsLoading ? "…" : (ownerStats?.inquiriesThisMonth ?? 0), icon: Users },
+    { label: "Confirmed residents", value: inquiriesLoading ? "…" : residentCount, icon: BadgeCheck },
   ];
+  // Clicking "Students" on a listing row opens a focused popup — same pattern
+  // as the platform admin's roster — split into confirmed residents (for
+  // record-keeping) and everyone who's simply sent a booking request.
+  const [rosterListing, setRosterListing] = useState(null);
   const analyticsStats = [
     { label: "Profile views (30d)", value: statsLoading ? "…" : (ownerStats?.profileViews30d ?? 0).toLocaleString(), icon: Eye },
     { label: "Est. revenue (GH₵)", value: statsLoading ? "…" : (ownerStats?.estimatedRevenueGHS ?? 0).toLocaleString(), icon: TrendingUp },
@@ -1587,7 +1627,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
               style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
             <select value={form.university} aria-label="University" onChange={(e) => setForm({ ...form, university: e.target.value })}
               style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
-              {UNIVERSITIES.map((u) => <option key={u}>{u}</option>)}
+              {universities.map((u) => <option key={u}>{u}</option>)}
             </select>
             <select value={form.bath} aria-label="Bathroom type" onChange={(e) => setForm({ ...form, bath: e.target.value })}
               style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
@@ -1916,6 +1956,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                 <th className="py-2.5 px-4 font-semibold">University</th>
                 <th className="py-2.5 px-4 font-semibold">Room categories</th>
                 <th className="py-2.5 px-4 font-semibold">Status</th>
+                <th className="py-2.5 px-4 font-semibold">Students</th>
                 <th className="py-2.5 px-4 font-semibold text-right">Actions</th>
               </tr>
             </thead>
@@ -1942,6 +1983,15 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                     )}
                   </td>
                   <td className="py-2.5 px-4">
+                    <button
+                      onClick={() => setRosterListing(l)}
+                      style={{ color: C.blue }}
+                      className="text-xs font-semibold hover:underline whitespace-nowrap"
+                    >
+                      View students
+                    </button>
+                  </td>
+                  <td className="py-2.5 px-4">
                     <div className="flex items-center justify-end gap-3">
                       <button onClick={() => startEdit(l)} title="Edit listing" aria-label={`Edit ${l.name}`}>
                         <Pencil size={15} color={C.gray600} className="cursor-pointer" />
@@ -1957,6 +2007,27 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
           </table>
         </div>
       </div>
+
+      {rosterListing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,20,35,0.55)" }} onClick={() => setRosterListing(null)}>
+          <div style={{ background: C.white }} className="rounded-lg max-w-md w-full p-6 relative max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => setRosterListing(null)} className="absolute top-4 right-4" aria-label="Close"><X size={20} color={C.gray600} /></button>
+            <h3 style={{ color: C.ink }} className="font-bold text-lg mb-1">Students — {rosterListing.name}</h3>
+            <p style={{ color: C.gray600 }} className="text-xs mb-1">For your records — who's living here now, and who's still just asked about it.</p>
+            {(() => {
+              const roster = ownerInquiries.filter((inq) => inq.listingId === rosterListing.id);
+              if (!roster.length) {
+                return <p style={{ color: C.gray600 }} className="text-sm mt-4">No students have inquired about this property yet.</p>;
+              }
+              const residents = roster.filter((s) => s.confirmedResident);
+              const requests = roster.filter((s) => !s.confirmedResident);
+              return (
+                <StudentRosterLists residents={residents} requests={requests} onToggle={onConfirmResident} />
+              );
+            })()}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -1965,15 +2036,22 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
 /* ---------------------------------------------------------
    LOGIN VIEW
 --------------------------------------------------------- */
-function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
+function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities }) {
   const [mode, setMode] = useState("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState("Student");
+  const [university, setUniversity] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  // Universities load async — default to the first one once the list arrives,
+  // as long as the person hasn't already picked something themselves.
+  React.useEffect(() => {
+    if (!university && universities?.length) setUniversity(universities[0]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [universities]);
   // True when the last sign-in attempt was blocked specifically because the
   // account's email isn't confirmed yet — lets us offer a "resend the link" option.
   const [needsVerification, setNeedsVerification] = useState(false);
@@ -2022,9 +2100,10 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
     if (!emailValid(email)) { setError("Enter a valid email address."); return; }
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords don't match."); return; }
+    if (role === "Student" && !university) { setError("Select your university."); return; }
     setBusy(true);
     try {
-      const data = await api.signup(name, email, password, role);
+      const data = await api.signup(name, email, password, role, role === "Student" ? university : undefined);
       onAuthSuccess(data.user, data.token);
     } catch (err) {
       setError(err.message);
@@ -2104,6 +2183,23 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView }) {
                   ))}
                 </div>
               </div>
+              {role === "Student" && (
+                <div>
+                  <p style={{ color: C.ink }} className="text-xs font-semibold mb-1.5">My university</p>
+                  <select
+                    value={university}
+                    aria-label="University"
+                    onChange={(e) => setUniversity(e.target.value)}
+                    style={{ borderColor: C.border, color: C.ink }}
+                    className="border rounded-md px-3 py-2.5 text-sm outline-none w-full"
+                  >
+                    {universities.map((u) => <option key={u}>{u}</option>)}
+                  </select>
+                  <p style={{ color: C.gray600 }} className="text-xs mt-1.5">
+                    You'll only see hostels and apartments near this campus.
+                  </p>
+                </div>
+              )}
             </>
           )}
           <input placeholder="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
@@ -2662,6 +2758,70 @@ function Footer({ setView, onOwnerDashboardClick, onListPropertyClick }) {
 }
 
 /* ---------------------------------------------------------
+   STUDENT ROSTER — shared by the platform admin's "View students" popup
+   and the owner dashboard's "Students" popup. Splits a listing's students
+   into two clear groups: confirmed residents (for record-keeping) and
+   everyone who has simply sent a booking request but isn't marked as
+   moved in yet.
+--------------------------------------------------------- */
+function StudentRosterLists({ residents, requests, onToggle }) {
+  const Row = ({ s }) => (
+    <div className="py-3 flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p style={{ color: C.ink }} className="text-sm font-semibold flex items-center gap-1.5">
+          {s.name}
+          {s.confirmedResident && <Badge tone="green">Resident</Badge>}
+        </p>
+        <p style={{ color: C.gray600 }} className="text-xs mt-0.5">
+          {s.roomType ? `${s.roomType} · ` : ""}{s.phone || s.email || "No contact provided"}
+        </p>
+        <p style={{ color: C.gray400 }} className="text-xs mt-0.5">
+          {s.moveIn ? `Move-in: ${s.moveIn}` : ""}
+          {s.createdAt ? ` · Booked ${new Date(s.createdAt).toLocaleDateString()}` : ""}
+        </p>
+      </div>
+      <button
+        onClick={() => onToggle(s)}
+        style={{ borderColor: C.border, color: s.confirmedResident ? C.gray600 : C.blue }}
+        className="border rounded-md px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0"
+      >
+        {s.confirmedResident ? "Unmark" : "Mark resident"}
+      </button>
+    </div>
+  );
+  return (
+    <>
+      <div className="mt-4">
+        <h4 style={{ color: C.ink }} className="text-xs font-bold uppercase tracking-wide flex items-center gap-1.5">
+          <BadgeCheck size={14} color={C.green || "#16a34a"} /> Residents ({residents.length})
+        </h4>
+        <p style={{ color: C.gray600 }} className="text-xs mt-0.5 mb-1">Students confirmed as actually living here — keep for your records.</p>
+        {residents.length ? (
+          <div className="flex flex-col divide-y" style={{ borderColor: C.border }}>
+            {residents.map((s) => <Row key={s.id} s={s} />)}
+          </div>
+        ) : (
+          <p style={{ color: C.gray400 }} className="text-xs py-2">No confirmed residents yet.</p>
+        )}
+      </div>
+      <div className="mt-5">
+        <h4 style={{ color: C.ink }} className="text-xs font-bold uppercase tracking-wide flex items-center gap-1.5">
+          <Inbox size={14} color={C.blue} /> Booking requests ({requests.length})
+        </h4>
+        <p style={{ color: C.gray600 }} className="text-xs mt-0.5 mb-1">Everyone who has sent a booking request but isn't marked as a resident yet.</p>
+        {requests.length ? (
+          <div className="flex flex-col divide-y" style={{ borderColor: C.border }}>
+            {requests.map((s) => <Row key={s.id} s={s} />)}
+          </div>
+        ) : (
+          <p style={{ color: C.gray400 }} className="text-xs py-2">No pending booking requests.</p>
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ---------------------------------------------------------
    PLATFORM ADMIN — site-wide stats, users, listings, inquiries.
    Restricted to accounts with role === "Admin". Reachable only
    by visiting /platform-admin directly — it is never linked from
@@ -2679,6 +2839,7 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "owners", label: "Owners" },
     { key: "listings", label: "Listings" },
     { key: "inquiries", label: "Inquiries" },
+    { key: "universities", label: "Universities" },
     { key: "emails", label: "Emails" },
   ];
   const [tab, setTab] = useState("overview");
@@ -2686,24 +2847,30 @@ function PlatformAdminView({ token, onManageOwner }) {
   const [users, setUsers] = useState([]);
   const [inquiries, setInquiries] = useState([]);
   const [listings, setListings] = useState([]);
+  const [universities, setUniversities] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
+  // Applies to the Listings and Inquiries tabs — lets the admin narrow either
+  // table down to a single campus instead of relying on free-text search.
+  const [universityFilter, setUniversityFilter] = useState("All");
 
   const loadAll = React.useCallback(async () => {
     setLoading(true);
     setError("");
     try {
-      const [statsData, usersData, inquiriesData, listingsData] = await Promise.all([
+      const [statsData, usersData, inquiriesData, listingsData, universitiesData] = await Promise.all([
         api.getAdminStats(token),
         api.getAdminUsers(token),
         api.getInquiries(token),
         api.getListings(),
+        api.getUniversities(),
       ]);
       setStats(statsData);
       setUsers(usersData.users);
       setInquiries(inquiriesData.inquiries);
       setListings(listingsData.listings);
+      setUniversities(universitiesData.universities || []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -2712,9 +2879,43 @@ function PlatformAdminView({ token, onManageOwner }) {
   }, [token]);
 
   React.useEffect(() => {
-    if (tab === "overview" || tab === "listings") loadAll();
+    if (tab === "overview" || tab === "listings" || tab === "universities") loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, loadAll]);
+
+  const [newUniversityName, setNewUniversityName] = useState("");
+  const [universityBusy, setUniversityBusy] = useState(false);
+  const [universityError, setUniversityError] = useState("");
+
+  const addUniversity = async () => {
+    const name = newUniversityName.trim();
+    if (!name) return;
+    setUniversityBusy(true);
+    setUniversityError("");
+    try {
+      const { university } = await api.addUniversity(name, token);
+      setUniversities((prev) => (prev.some((u) => u.id === university.id) ? prev : [...prev, university].sort((a, b) => a.name.localeCompare(b.name))));
+      setNewUniversityName("");
+    } catch (err) {
+      setUniversityError(err.message);
+    } finally {
+      setUniversityBusy(false);
+    }
+  };
+
+  const [deletingUniversityId, setDeletingUniversityId] = useState(null);
+  const removeUniversity = async (u) => {
+    setDeletingUniversityId(u.id);
+    setUniversityError("");
+    try {
+      await api.deleteUniversity(u.id, token);
+      setUniversities((prev) => prev.filter((x) => x.id !== u.id));
+    } catch (err) {
+      setUniversityError(err.message);
+    } finally {
+      setDeletingUniversityId(null);
+    }
+  };
 
   const overviewStats = stats ? [
     { label: "Total users", value: stats.totalUsers, icon: Users },
@@ -2737,6 +2938,7 @@ function PlatformAdminView({ token, onManageOwner }) {
       });
 
   const filteredListings = listings.filter((l) => {
+    if (universityFilter !== "All" && l.university !== universityFilter) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return l.name.toLowerCase().includes(q) || (l.university || "").toLowerCase().includes(q);
@@ -2747,8 +2949,14 @@ function PlatformAdminView({ token, onManageOwner }) {
     listings.forEach((l) => { map[l.id] = l.name; });
     return map;
   }, [listings]);
+  const listingUniversityById = useMemo(() => {
+    const map = {};
+    listings.forEach((l) => { map[l.id] = l.university; });
+    return map;
+  }, [listings]);
 
   const filteredInquiries = inquiries.filter((inq) => {
+    if (universityFilter !== "All" && listingUniversityById[inq.listingId] !== universityFilter) return false;
     const q = query.trim().toLowerCase();
     if (!q) return true;
     return inq.name.toLowerCase().includes(q) || (listingNameById[inq.listingId] || "").toLowerCase().includes(q);
@@ -2915,16 +3123,30 @@ function PlatformAdminView({ token, onManageOwner }) {
             </>
           )}
 
-          {tab !== "overview" && tab !== "emails" && (
-            <div className="relative mb-4 max-w-sm">
-              <Search size={16} style={{ color: C.gray400 }} className="absolute left-3 top-1/2 -translate-y-1/2" />
-              <input
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder={tab === "listings" ? "Search by property or university…" : tab === "inquiries" ? "Search by name or property…" : "Search by name or email…"}
-                style={{ borderColor: C.border }}
-                className="w-full border rounded-md pl-9 pr-3 py-2 text-sm outline-none"
-              />
+          {tab !== "overview" && tab !== "emails" && tab !== "universities" && (
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <div className="relative max-w-sm w-full sm:w-auto flex-1">
+                <Search size={16} style={{ color: C.gray400 }} className="absolute left-3 top-1/2 -translate-y-1/2" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder={tab === "listings" ? "Search by property or university…" : tab === "inquiries" ? "Search by name or property…" : "Search by name or email…"}
+                  style={{ borderColor: C.border }}
+                  className="w-full border rounded-md pl-9 pr-3 py-2 text-sm outline-none"
+                />
+              </div>
+              {(tab === "listings" || tab === "inquiries") && universities.length > 0 && (
+                <select
+                  aria-label="Filter by university"
+                  value={universityFilter}
+                  onChange={(e) => setUniversityFilter(e.target.value)}
+                  style={{ borderColor: C.border, color: C.ink }}
+                  className="border rounded-md px-3 py-2 text-sm bg-white"
+                >
+                  <option value="All">All universities</option>
+                  {universities.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                </select>
+              )}
             </div>
           )}
 
@@ -2943,6 +3165,53 @@ function PlatformAdminView({ token, onManageOwner }) {
         {tab === "inquiries" && (
             <DataTable columns={inquiryColumns} rows={filteredInquiries} emptyLabel="No inquiries yet." />
           )}
+          {tab === "universities" && (
+            <div style={{ borderColor: C.border }} className="border rounded-lg bg-white p-4 sm:p-5">
+              <h3 style={{ color: C.ink }} className="font-bold text-sm mb-1">Universities</h3>
+              <p style={{ color: C.gray600 }} className="text-xs mb-4">
+                The list of campuses BookInn operates in — drives the signup form, the owner listing form, and student/guest browse filters. Add a school here instead of editing code.
+              </p>
+
+              <div className="flex flex-wrap items-end gap-2 mb-2">
+                <div className="flex-1 min-w-[220px]">
+                  <p style={{ color: C.ink }} className="text-xs font-semibold mb-1.5">Add a university</p>
+                  <input
+                    value={newUniversityName}
+                    onChange={(e) => setNewUniversityName(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addUniversity()}
+                    placeholder="e.g. University of Ghana"
+                    style={{ borderColor: C.border }}
+                    className="w-full border rounded-md px-3 py-2 text-sm outline-none"
+                  />
+                </div>
+                <PrimaryButton onClick={addUniversity} disabled={universityBusy || !newUniversityName.trim()}>
+                  {universityBusy ? "Adding…" : "Add"}
+                </PrimaryButton>
+              </div>
+              {universityError && (
+                <p style={{ color: "#b3261e" }} className="text-xs mb-3">{universityError}</p>
+              )}
+
+              <div className="flex flex-col divide-y mt-4" style={{ borderColor: C.border }}>
+                {universities.length === 0 && (
+                  <p style={{ color: C.gray600 }} className="text-sm py-4 text-center">No universities added yet.</p>
+                )}
+                {universities.map((u) => (
+                  <div key={u.id} className="py-2.5 flex items-center justify-between gap-3">
+                    <span style={{ color: C.ink }} className="text-sm font-medium truncate">{u.name}</span>
+                    <button
+                      onClick={() => removeUniversity(u)}
+                      disabled={deletingUniversityId === u.id}
+                      style={{ color: "#b3261e" }}
+                      className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60 shrink-0"
+                    >
+                      {deletingUniversityId === u.id ? "Removing…" : "Remove"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {tab === "emails" && <PlatformAdminEmails token={token} />}
         </>
       )}
@@ -2957,39 +3226,14 @@ function PlatformAdminView({ token, onManageOwner }) {
               if (!roster.length) {
                 return <p style={{ color: C.gray600 }} className="text-sm mt-4">No students have inquired about this property yet.</p>;
               }
+              const residents = roster.filter((s) => s.confirmedResident);
+              const requests = roster.filter((s) => !s.confirmedResident);
+              const onToggle = async (s) => {
+                const updated = await api.setConfirmedResident(s.id, !s.confirmedResident, token);
+                setInquiries((prev) => prev.map((i) => (i.id === s.id ? updated.inquiry : i)));
+              };
               return (
-                <>
-                  <p style={{ color: C.gray600 }} className="text-sm mb-4">{roster.length} student{roster.length > 1 ? "s" : ""}</p>
-                  <div className="flex flex-col divide-y" style={{ borderColor: C.border }}>
-                    {roster.map((s) => (
-                      <div key={s.id} className="py-3 flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p style={{ color: C.ink }} className="text-sm font-semibold flex items-center gap-1.5">
-                            {s.name}
-                            {s.confirmedResident && <Badge tone="green">Resident</Badge>}
-                          </p>
-                          <p style={{ color: C.gray600 }} className="text-xs mt-0.5">
-                            {s.roomType ? `${s.roomType} · ` : ""}{s.phone || s.email || "No contact provided"}
-                          </p>
-                          <p style={{ color: C.gray400 }} className="text-xs mt-0.5">
-                            {s.moveIn ? `Move-in: ${s.moveIn}` : ""}
-                            {s.createdAt ? ` · Booked ${new Date(s.createdAt).toLocaleDateString()}` : ""}
-                          </p>
-                        </div>
-                        <button
-                          onClick={async () => {
-                            const updated = await api.setConfirmedResident(s.id, !s.confirmedResident, token);
-                            setInquiries((prev) => prev.map((i) => (i.id === s.id ? updated.inquiry : i)));
-                          }}
-                          style={{ borderColor: C.border, color: s.confirmedResident ? C.gray600 : C.blue }}
-                          className="border rounded-md px-2.5 py-1 text-xs font-semibold whitespace-nowrap shrink-0"
-                        >
-                          {s.confirmedResident ? "Unmark" : "Mark resident"}
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                </>
+                <StudentRosterLists residents={residents} requests={requests} onToggle={onToggle} />
               );
             })()}
           </div>
@@ -3119,6 +3363,13 @@ export default function App() {
   const [myListings, setMyListings] = useState([]);
   const [myListingsLoading, setMyListingsLoading] = useState(false);
   const [myMaxListings, setMyMaxListings] = useState(1);
+  // The editable list of campuses (managed from the platform admin dashboard's
+  // Universities tab) — loaded once on mount and threaded down to signup, the
+  // owner listing form, and the guest/student browse filters.
+  const [universities, setUniversities] = useState([]);
+  React.useEffect(() => {
+    api.getUniversities().then((data) => setUniversities((data.universities || []).map((u) => u.name))).catch(() => {});
+  }, []);
 
   // Platform admin has its own sign-in, completely separate from the public
   // site's user/token above — kept under its own localStorage key so signing
@@ -3165,15 +3416,19 @@ export default function App() {
   // so a page fetched once on first load can go stale within the same session
   // (e.g. a newly-Featured listing not showing up in "Featured properties"
   // until a hard refresh).
+  // A logged-in student's feed is scoped server-side to their own university
+  // (see university on their account, set at signup) — so cards, search and
+  // favorites for that account never include another school's listings.
+  const studentUniversity = user?.role === "Student" ? user?.university : null;
   React.useEffect(() => {
     if (view !== "home") return;
     setListingsLoading((prev) => (listings.length === 0 ? true : prev));
-    api.getListings()
+    api.getListings(studentUniversity)
       .then((data) => setListings(data.listings))
       .catch((err) => setListingsError(err.message))
       .finally(() => setListingsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [view]);
+  }, [view, studentUniversity]);
 
   // Restore a saved session (if any) and verify it's still valid.
   React.useEffect(() => {
@@ -3198,6 +3453,15 @@ export default function App() {
   React.useEffect(() => {
     if (view === "admin" && user?.role === "Owner") refreshOwnerStats();
   }, [view, user?.role, refreshOwnerStats]);
+
+  // Used by the owner dashboard's "Students" popup to mark/unmark a
+  // confirmed resident — updates the cached ownerInquiries in place so the
+  // popup and the "Confirmed residents" stat both reflect it immediately.
+  const confirmResident = React.useCallback(async (inquiry) => {
+    const { inquiry: updated } = await api.setConfirmedResident(inquiry.id, !inquiry.confirmedResident, token);
+    setOwnerInquiries((prev) => prev.map((i) => (i.id === updated.id ? updated : i)));
+    return updated;
+  }, [token]);
 
   const refreshOwnerInquiries = React.useCallback(() => {
     if (!token || user?.role !== "Owner") { setOwnerInquiries([]); return; }
@@ -3234,14 +3498,18 @@ export default function App() {
   };
 
   const openListing = (listing) => {
+    // Defense in depth — the student feed is already scoped server-side, so
+    // this only matters for a stale card (e.g. a favorite saved before a
+    // listing's university changed). Never let a student open another school's listing.
+    if (studentUniversity && listing.university !== studentUniversity) return;
     setSelectedListing(listing);
     setView("detail");
     window.scrollTo?.(0, 0);
   };
 
   const refreshPublicListings = React.useCallback(() => {
-    api.getListings().then((data) => setListings(data.listings)).catch(() => {});
-  }, []);
+    api.getListings(studentUniversity).then((data) => setListings(data.listings)).catch(() => {});
+  }, [studentUniversity]);
 
   const addListing = async (l) => {
     const data = await api.addListing(l, token);
@@ -3341,7 +3609,7 @@ export default function App() {
               <p style={{ color: C.gray600 }} className="text-sm">{listingsError} — is the backend server running? Try <code>npm run dev:all</code>.</p>
             </div>
           ) : (
-            <HomeView favorites={favorites} toggleFav={toggleFav} onOpenListing={openListing} listings={listings} loading={listingsLoading} />
+            <HomeView favorites={favorites} toggleFav={toggleFav} onOpenListing={openListing} listings={listings} loading={listingsLoading} studentUniversity={studentUniversity} universities={universities} />
           )
         )}
        {view === "detail" && selectedListing && (
@@ -3363,7 +3631,7 @@ export default function App() {
         {view === "account" && user && <AccountView user={user} favCount={favorites.size} setView={setView} />}
         {view === "admin" && (
           !user ? (
-            <LoginView onAuthSuccess={handleAuthSuccess} onGuest={handleGuest} setView={setView} redirectNote="Sign in to manage your property listings." />
+            <LoginView onAuthSuccess={handleAuthSuccess} onGuest={handleGuest} setView={setView} redirectNote="Sign in to manage your property listings." universities={universities} />
           ) : user.role !== "Owner" ? (
             <NotOwnerNotice user={user} setView={setView} />
           ) : (
@@ -3377,6 +3645,8 @@ export default function App() {
               ownerInquiries={ownerInquiries}
               inquiriesLoading={ownerInquiriesLoading}
               addListing={addListing} updateListing={updateListing} deleteListing={deleteListingHandler}
+              onConfirmResident={confirmResident}
+              universities={universities}
             />
           )
         )}
@@ -3387,6 +3657,7 @@ export default function App() {
               authRedirect === "admin" ? "Sign in to manage your property listings." :
               undefined
             }
+            universities={universities}
           />
         )}
         {view === "forgot-password" && <ForgotPasswordView setView={setView} />}
