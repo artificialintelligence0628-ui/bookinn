@@ -3199,7 +3199,7 @@ function PlatformAdminView({ token, onManageOwner }) {
             <div style={{ borderColor: C.border }} className="border rounded-lg bg-white p-4 sm:p-5">
               <h3 style={{ color: C.ink }} className="font-bold text-sm mb-1">Universities</h3>
               <p style={{ color: C.gray600 }} className="text-xs mb-4">
-                The list of campuses BookInn operates in — drives the signup form, the owner listing form, and student/guest browse filters. Add a school here instead of editing code.
+                The list of campuses BookInn operates in.
               </p>
 
               <div className="flex flex-wrap items-end gap-2 mb-2">
