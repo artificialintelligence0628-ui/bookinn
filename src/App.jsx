@@ -2791,7 +2791,7 @@ function StudentRosterLists({ residents, requests, onToggle }) {
         <h4 style={{ color: C.ink }} className="text-xs font-bold uppercase tracking-wide flex items-center gap-1.5">
           <BadgeCheck size={14} color={C.green || "#16a34a"} /> Residents ({residents.length})
         </h4>
-        <p style={{ color: C.gray600 }} className="text-xs mt-0.5 mb-1">Students confirmed as actually living here — keep for your records.</p>
+        <p style={{ color: C.gray600 }} className="text-xs mt-0.5 mb-1">Students confirmed as actually living here.</p>
         {residents.length ? (
           <div className="flex flex-col divide-y" style={{ borderColor: C.border }}>
             {residents.map((s) => <Row key={s.id} s={s} />)}
