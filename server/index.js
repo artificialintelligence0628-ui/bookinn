@@ -790,6 +790,23 @@ app.post("/api/admin/universities", requireAuth, requireAdmin, ah(async (req, re
   res.status(201).json({ university });
 }));
 
+// Renames a university and cascades the new name onto every listing and
+// student account that referenced the old one (see store.renameUniversity) —
+// otherwise a rename would silently orphan existing listings/students.
+app.patch("/api/admin/universities/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const name = (req.body?.name || "").trim();
+  if (!name) return res.status(400).json({ error: "University name is required." });
+  const universities = await store.getUniversities();
+  const target = universities.find((u) => u.id === id);
+  if (!target) return res.status(404).json({ error: "University not found." });
+  if (universities.some((u) => u.id !== id && u.name.toLowerCase() === name.toLowerCase())) {
+    return res.status(409).json({ error: "A university with that name already exists." });
+  }
+  const updated = await store.renameUniversity(id, name);
+  res.json({ university: updated });
+}));
+
 app.delete("/api/admin/universities/:id", requireAuth, requireAdmin, ah(async (req, res) => {
   const id = Number(req.params.id);
   const universities = await store.getUniversities();
