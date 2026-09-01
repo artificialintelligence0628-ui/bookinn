@@ -46,6 +46,7 @@ const ADMIN_ROLE = "Admin"; // never accepted from public /auth/signup — seede
 const DEFAULT_UNIVERSITY = "Koforidua Technical University";
 const HOSTEL_ROOM_TYPES = ["One in a room", "Two in a room", "Three in a room", "Four in a room", "Six in a room"];
 const APARTMENT_ROOM_TYPES = ["Self-contained", "Shared Apartment"];
+const AVAILABILITY_STATUSES = ["Space available", "Partly booked", "Fully booked"];
 
 // Credentials for the platform admin account, seeded automatically the first time the
 // server starts (only if no Admin account exists yet). Override via .env in production.
