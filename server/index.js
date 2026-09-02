@@ -1277,17 +1277,7 @@ app.post("/api/webhooks/resend", ah(async (req, res) => {
 }));
 
 app.get("/api/health", (req, res) => res.json({ ok: true }));
-// TEMPORARY diagnostic route — reveals how many proxy hops sit in front of
-// this server on Render, so `trust proxy` can be set to the correct count for
-// express-rate-limit to key on the real visitor IP. Remove this route once
-// confirmed — it's not meant to stay in a production deployment.
-app.get("/api/debug-ip", (req, res) => {
-  res.json({
-    resolvedClientIp: req.ip, // what Express currently thinks the visitor's IP is
-    xForwardedForHeader: req.headers["x-forwarded-for"] || null, // the raw header from the proxies
-    cfConnectingIp: req.headers["cf-connecting-ip"] || null, // Cloudflare's own "true client IP" header, if present
-  });
-});
+
 
 // Serve the built frontend (npm run build → dist/) so this one server handles
 // both the API and the site — the whole app deploys as a single service.
