@@ -54,7 +54,7 @@ const JWT_SECRET = requireEnv("JWT_SECRET", process.env.JWT_SECRET, PLACEHOLDER_
   || "bookinn-dev-secret-change-me"; // only reachable outside production
 
 const app = express();
-app.set("trust proxy", 1); // behind Render's proxy — needed for correct client IPs (rate limiting, logs)
+app.set("trust proxy", 2); // Render's traffic passes through Cloudflare, then Render's own internal proxy — 2 hops before this app sees the request. Confirmed via /api/debug-ip: with 1, req.ip resolved to Render's internal address (10.24.245.3) instead of the real visitor IP; with 2, it correctly resolves to the visitor's real IP.
 
 // helmet() with its strict defaults would break this app's real, legitimate
 // external resources: the Inter font loaded via an inline <style>/@import
