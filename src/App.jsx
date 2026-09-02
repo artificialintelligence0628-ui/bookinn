@@ -8,7 +8,7 @@ import {
   Car, Heart, X, Menu, Phone, Mail, MessageCircle, PlayCircle, ChevronLeft,
   ChevronRight, SlidersHorizontal, Check, Building2, Users, TrendingUp,
   LayoutDashboard, Plus, LogIn, BedDouble, Bath, Sparkles, ArrowRight,
-  Eye, Pencil, Trash2, BadgeCheck, ImagePlus, Flame, Gauge,
+  Eye, EyeOff, Pencil, Trash2, BadgeCheck, ImagePlus, Flame, Gauge,
   ChevronDown, AlertTriangle, Lock, CreditCard, HelpCircle,
   Shirt, Table2, Armchair, Fan, Copy, Compass, BookOpen, Dumbbell,
   GraduationCap, UserCog, Inbox, Shield, RefreshCw, Wallet, Clock, LogOut
@@ -2030,6 +2030,39 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
   );
 }
 
+/* ---------------------------------------------------------
+   PASSWORD INPUT — reusable text field with a show/hide toggle and a
+   tighter dot spacing (the default browser mask dots render quite large
+   and widely spaced at our normal input font size).
+--------------------------------------------------------- */
+function PasswordInput({ placeholder, value, onChange, onKeyDown, className, style, autoComplete }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <div className="relative">
+      <input
+        placeholder={placeholder}
+        type={visible ? "text" : "password"}
+        value={value}
+        onChange={onChange}
+        onKeyDown={onKeyDown}
+        autoComplete={autoComplete}
+        style={{ ...style, fontSize: visible ? style?.fontSize : "12px", letterSpacing: visible ? "normal" : "0.05em" }}
+        className={`${className} pr-10`}
+      />
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => setVisible((v) => !v)}
+        aria-label={visible ? "Hide password" : "Show password"}
+        style={{ color: C.gray600 }}
+        className="absolute right-2.5 top-1/2 -translate-y-1/2 p-0.5 hover:opacity-70"
+      >
+        {visible ? <EyeOff size={16} /> : <Eye size={16} />}
+      </button>
+    </div>
+  );
+}
+
 
 /* ---------------------------------------------------------
    LOGIN VIEW
@@ -2202,13 +2235,15 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
           )}
           <input placeholder="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
-          <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          <PasswordInput placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && mode === "signin" && submit()}
-            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
+            autoComplete="current-password"
+            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none w-full" />
           {mode === "signup" && (
-            <input placeholder="Confirm password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+            <PasswordInput placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && submit()}
-              style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
+              autoComplete="new-password"
+              style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none w-full" />
           )}
           {mode === "signin" && (
             <button type="button" onClick={() => setView("forgot-password")} style={{ color: C.blue }} className="text-xs font-semibold text-right hover:underline -mt-1">
@@ -2344,11 +2379,13 @@ function ResetPasswordView({ token, onAuthSuccess, setView }) {
               {error}
             </div>
           )}
-          <input placeholder="New password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
-          <input placeholder="Confirm new password" type="password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
+          <PasswordInput placeholder="New password" value={password} onChange={(e) => setPassword(e.target.value)}
+            autoComplete="new-password"
+            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none w-full" />
+          <PasswordInput placeholder="Confirm new password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
-            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
+            autoComplete="new-password"
+            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none w-full" />
           <PrimaryButton full onClick={submit} disabled={busy}>
             {busy ? "Saving…" : "Set new password"}
           </PrimaryButton>
@@ -3363,9 +3400,10 @@ function AdminLoginView({ onAuthSuccess }) {
         <div className="flex flex-col gap-3">
           <input placeholder="Email address" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
             style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
-          <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+          <PasswordInput placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && submit()}
-            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none" />
+            autoComplete="current-password"
+            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2.5 text-sm outline-none w-full" />
           <PrimaryButton full onClick={submit} disabled={busy}>
             {busy ? "Please wait…" : "Sign in"}
           </PrimaryButton>
