@@ -3676,7 +3676,10 @@ export default function App() {
     if (!token || !isListingManagerRole(user?.role)) { setMyListings([]); setMyMaxListings(1); return; }
     setMyListingsLoading(true);
     api.getMyListings(token)
-      .then((data) => { setMyListings(data.listings); setMyMaxListings(data.maxListings ?? 1); })
+     .then((data) => {
+  setMyListings(data.listings);
+  setMyMaxListings(data.maxListings === undefined ? 1 : data.maxListings);
+})
       .catch(() => {})
       .finally(() => setMyListingsLoading(false));
   }, [token, user?.role]);
