@@ -12,7 +12,7 @@ import { store } from "./store.js";
 import { sendEmail, personalizeContent, buildBrandedEmailHtml } from "./email.js";
 import crypto from "crypto";
 
-export const AUDIENCE_TYPES = ["all", "Student", "Parent", "Owner", "selected"];
+export const AUDIENCE_TYPES = ["all", "Student", "Parent", "Owner", "Agent", "selected"];
 export const CAMPAIGN_STATUSES = [
   "draft", "queued", "sending", "completed", "partially_failed", "failed", "scheduled", "cancelled",
 ];
@@ -32,7 +32,7 @@ export async function resolveAudience(audienceType, selectedUserIds = []) {
   if (audienceType === "all") {
     return store.getAllNonAdminUsers({ marketingOnly: true });
   }
-  if (["Student", "Parent", "Owner"].includes(audienceType)) {
+  if (["Student", "Parent", "Owner", "Agent"].includes(audienceType)) {
     return store.getUsersByRole(audienceType, { marketingOnly: true });
   }
   return [];

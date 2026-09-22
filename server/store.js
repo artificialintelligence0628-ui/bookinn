@@ -366,7 +366,7 @@ async getInquiries() {
     const { rows } = await pool.query(
       `SELECT role, count(*)::int AS count FROM users WHERE role <> 'Admin' GROUP BY role`
     );
-    const counts = { Student: 0, Parent: 0, Owner: 0 };
+    const counts = { Student: 0, Parent: 0, Owner: 0, Agent: 0 };
     let all = 0;
     for (const r of rows) {
       if (counts[r.role] !== undefined) counts[r.role] = r.count;
@@ -381,7 +381,7 @@ async getInquiries() {
     const { rows } = await pool.query(
       `SELECT role, count(*)::int AS count FROM users WHERE role <> 'Admin' AND marketing_emails = true GROUP BY role`
     );
-    const counts = { Student: 0, Parent: 0, Owner: 0 };
+    const counts = { Student: 0, Parent: 0, Owner: 0, Agent: 0 };
     let all = 0;
     for (const r of rows) {
       if (counts[r.role] !== undefined) counts[r.role] = r.count;

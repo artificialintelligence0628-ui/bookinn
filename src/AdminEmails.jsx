@@ -33,8 +33,8 @@ function StatusPill({ status }) {
   );
 }
 
-const AUDIENCE_LABELS = { all: "All Users", Student: "Students", Parent: "Parents", Owner: "Owners", selected: "Selected Users" };
-const AUDIENCE_ICONS = { all: Users, Student: GraduationCap, Parent: UserCog, Owner: Building2, selected: Users };
+const AUDIENCE_LABELS = { all: "All Users", Student: "Students", Parent: "Parents", Owner: "Owners", Agent: "Agents", selected: "Selected Users" };
+const AUDIENCE_ICONS = { all: Users, Student: GraduationCap, Parent: UserCog, Owner: Building2, Agent: Building2, selected: Users };
 
 function fmtDate(d) {
   if (!d) return "—";
@@ -253,7 +253,7 @@ function RecipientPicker({ token, selected, setSelected }) {
           style={{ borderColor: C.border, color: C.ink }}
           className="border rounded-md px-2 py-1.5 text-sm outline-none"
         >
-          {["All", "Student", "Parent", "Owner"].map((r) => <option key={r} value={r}>{r}</option>)}
+          {["All", "Student", "Parent", "Owner", "Agent"].map((r) => <option key={r} value={r}>{r}</option>)}
         </select>
       </div>
 
@@ -421,6 +421,7 @@ function ComposeView({ token, templates, editingCampaign, onDone, onSaved, audie
     { key: "Student", count: audienceCounts?.eligible.Student },
     { key: "Parent", count: audienceCounts?.eligible.Parent },
     { key: "Owner", count: audienceCounts?.eligible.Owner },
+    { key: "Agent", count: audienceCounts?.eligible.Agent },
     { key: "selected", count: selectedUsers.length },
   ];
 

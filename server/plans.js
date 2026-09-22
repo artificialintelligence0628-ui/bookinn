@@ -24,25 +24,42 @@ export const FULL_FEATURES = {
   advancedAvailability: true,
 };
 
+// Agents (real-estate/letting agents who list on behalf of multiple
+// landlords) get everything an Owner gets, except their listing count is
+// never capped — an agent may be managing dozens of properties at once.
+export const AGENT_FEATURES = {
+  ...FULL_FEATURES,
+  maxListings: Infinity,
+};
+
+// Single source of truth for "which feature set does this account get" —
+// keyed off role so every other function here just asks for a role's
+// features instead of re-deriving them.
+export function featuresForRole(role) {
+  return role === "Agent" ? AGENT_FEATURES : FULL_FEATURES;
+}
+
 // Kept for any code path that still asks "how many listings can this owner
-// create" — always the full amount now.
+// create" — reads it off the view's own features so it stays correct for
+// whichever role computed that view (Owner: capped, Agent: unlimited).
 export function maxListingsForView(view) {
-  return FULL_FEATURES.maxListings;
+  return view?.features?.maxListings ?? FULL_FEATURES.maxListings;
 }
 
 export function featuresForPlan() {
   return FULL_FEATURES;
 }
 
-// Every owner account is always fully active — no plan, no trial, no expiry,
-// nothing to subscribe to or cancel. Kept as a function (rather than a plain
-// constant) so every existing call site keeps working unchanged.
+// Every owner/agent account is always fully active — no plan, no trial, no
+// expiry, nothing to subscribe to or cancel. Kept as a function (rather than
+// a plain constant) so every existing call site keeps working unchanged.
 export function computeSubscriptionView(user) {
+  const features = featuresForRole(user?.role);
   return {
     plan: null,
     status: "active",
     effectivePlan: null,
-    features: FULL_FEATURES,
+    features,
     isListingVisible: true,
     expiredFromTrial: false,
     trialStartedAt: null,

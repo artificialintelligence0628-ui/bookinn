@@ -11,7 +11,7 @@ import {
   Eye, EyeOff, Pencil, Trash2, BadgeCheck, ImagePlus, Flame, Gauge,
   ChevronDown, AlertTriangle, Lock, CreditCard, HelpCircle,
   Shirt, Table2, Armchair, Fan, Copy, Compass, BookOpen, Dumbbell,
-  GraduationCap, UserCog, Inbox, Shield, RefreshCw, Wallet, Clock, LogOut
+  GraduationCap, UserCog, Inbox, Shield, RefreshCw, Wallet, Clock, LogOut, Briefcase
 } from "lucide-react";
 
 /* ---------------------------------------------------------
@@ -218,7 +218,7 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
             ) : (
               <>
                 <button onClick={() => { onOwnerDashboardClick(); setMobileOpen(false); }} style={{ color: C.white }} className="text-sm font-semibold flex items-center gap-1.5 hover:opacity-90">
-                  <LayoutDashboard size={16} /> Owner dashboard
+                  <LayoutDashboard size={16} /> {user?.role === "Agent" ? "Agent dashboard" : "Owner dashboard"}
                 </button>
                 {user ? (
                   <div className="flex items-center gap-2.5">
@@ -270,7 +270,7 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
                 style={{ color: "rgba(255,255,255,0.85)" }}
                 className="text-sm font-semibold hover:text-white transition px-1 text-left"
               >
-                Owner dashboard
+                {user?.role === "Agent" ? "Agent dashboard" : "Owner dashboard"}
               </button>
               {user && navItem("account", "My account")}
               {user ? (
@@ -502,9 +502,14 @@ function ListingCard({ listing, isFav, toggleFav, onOpen }) {
     <div style={{ borderColor: C.border }} className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition flex flex-col sm:flex-row">
       <div className="relative sm:w-56 shrink-0">
         <img src={img(listing.image, 500)} alt={listing.name} loading="lazy" className="w-full h-44 sm:h-full object-cover" />
-               {listing.featured && (
+               {(listing.featured || listing.listedByAgent) && (
           <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
-            <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Featured</span></Badge>
+            {listing.featured && (
+              <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Featured</span></Badge>
+            )}
+            {listing.listedByAgent && (
+              <Badge tone="blue"><span className="flex items-center gap-1"><Briefcase size={12} /> Agent listing</span></Badge>
+            )}
           </div>
         )}
         <button
@@ -940,6 +945,7 @@ function ReviewForm({ listingId, onSubmitted }) {
             <Badge>{listing.bath}</Badge>
             {listing.kitchen && <Badge tone="green">Shared kitchen</Badge>}
                        {listing.featured && <Badge tone="yellow">Featured listing</Badge>}
+            {listing.listedByAgent && <Badge tone="blue"><span className="flex items-center gap-1"><Briefcase size={12} /> Agent listing</span></Badge>}
           </div>
 
           <h3 style={{ color: C.ink }} className="font-bold text-base mb-2">About this room</h3>
@@ -1151,7 +1157,7 @@ function PricingView({ onGoToDashboard }) {
         <div style={{ background: C.blueLight, borderColor: C.border }} className="border rounded-lg p-4 mb-6 flex items-start gap-3">
           <Sparkles size={18} color={C.blue} className="mt-0.5 shrink-0" />
           <p style={{ color: C.navy }} className="text-sm">
-            <span className="font-bold">Listing is free.</span> Create an Owner account and publish your listing from the dashboard — no card required, no plan to choose.
+            <span className="font-bold">Listing is free.</span> Create an Owner or Agent account and publish your listing from the dashboard — no card required, no plan to choose.
           </p>
         </div>
 
@@ -1159,7 +1165,7 @@ function PricingView({ onGoToDashboard }) {
           <h3 style={{ color: C.ink }} className="font-bold text-lg mb-3">What you get</h3>
           <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
             {[
-                           "Up to 3 hostel/apartment listings", "Up to 20 photos per listing", "Video tour", "Virtual walkthrough",
+                           "Up to 3 hostel/apartment listings (unlimited for Agent accounts)", "Up to 20 photos per listing", "Video tour", "Virtual walkthrough",
               "WhatsApp enquiries", "Top-of-search placement", "Homepage placement", "Analytics",
             ].map((f) => (
               <li key={f} style={{ color: C.gray600 }} className="text-sm flex items-start gap-2">
@@ -1212,8 +1218,10 @@ function AccountView({ user, favCount, setView }) {
         </div>
 
         <div className="flex gap-2 flex-wrap">
-          {user.role === "Owner" ? (
-            <PrimaryButton onClick={() => setView("admin")}>Go to owner dashboard</PrimaryButton>
+          {user.role === "Owner" || user.role === "Agent" ? (
+            <PrimaryButton onClick={() => setView("admin")}>
+              {user.role === "Agent" ? "Go to agent dashboard" : "Go to owner dashboard"}
+            </PrimaryButton>
           ) : (
             <PrimaryButton onClick={() => setView("saved")}>View saved listings</PrimaryButton>
           )}
@@ -1228,7 +1236,7 @@ function NotOwnerNotice({ user, setView }) {
   return (
     <div className="max-w-md mx-auto px-4 py-16 text-center">
       <p style={{ color: C.ink }} className="font-semibold mb-2">This account is registered as a {user.role}</p>
-      <p style={{ color: C.gray600 }} className="text-sm mb-4">Only Owner accounts can list properties. Create a separate Owner account to get started.</p>
+      <p style={{ color: C.gray600 }} className="text-sm mb-4">Only Owner and Agent accounts can list properties. Create a separate Owner or Agent account to get started.</p>
       <PrimaryButton onClick={() => setView("home")}>Back to home</PrimaryButton>
     </div>
   );
@@ -1264,7 +1272,8 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
   }, [universities]);
 
   const hasListing = listings.length > 0;
-  const atListingLimit = listings.length >= maxListings;
+  const isUnlimited = maxListings == null;
+  const atListingLimit = !isUnlimited && listings.length >= maxListings;
   const canAddListing = !atListingLimit;
 
   const features = FULL_FEATURES;
@@ -1538,7 +1547,9 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
     <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div>
-          <h1 style={{ color: C.ink }} className="text-xl sm:text-2xl font-extrabold">Owner dashboard</h1>
+          <h1 style={{ color: C.ink }} className="text-xl sm:text-2xl font-extrabold">
+            {user.role === "Agent" ? "Agent dashboard" : "Owner dashboard"}
+          </h1>
           <p style={{ color: C.gray600 }} className="text-sm">Manage your listings and track inquiries.</p>
         </div>
         {!atListingLimit && (
@@ -1555,7 +1566,9 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
 
       {hasListing && (
         <p style={{ color: C.gray600 }} className="text-xs -mt-4 mb-4">
-          {listings.length}/{maxListings} listing{maxListings === 1 ? "" : "s"} used.
+          {isUnlimited
+            ? `${listings.length} listing${listings.length === 1 ? "" : "s"} · unlimited plan`
+            : `${listings.length}/${maxListings} listing${maxListings === 1 ? "" : "s"} used.`}
         </p>
       )}
 
@@ -2201,7 +2214,7 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
               <div>
                 <p style={{ color: C.ink }} className="text-xs font-semibold mb-1.5">I am a…</p>
                 <div className="flex gap-2">
-                  {["Student", "Parent", "Owner"].map((r) => (
+                  {["Student", "Parent", "Owner", "Agent"].map((r) => (
                     <button
                       key={r}
                       type="button"
@@ -2213,6 +2226,11 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
                     </button>
                   ))}
                 </div>
+                {role === "Agent" && (
+                  <p style={{ color: C.gray600 }} className="text-xs mt-1.5">
+                    List hostels or apartments on behalf of landlords — unlimited listings, same free dashboard.
+                  </p>
+                )}
               </div>
               {role === "Student" && (
                 <div>
@@ -2868,6 +2886,7 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "students", label: "Students" },
     { key: "parents", label: "Parents" },
     { key: "owners", label: "Owners" },
+    { key: "agents", label: "Agents" },
     { key: "listings", label: "Listings" },
     { key: "inquiries", label: "Inquiries" },
     { key: "universities", label: "Universities" },
@@ -2983,6 +3002,7 @@ function PlatformAdminView({ token, onManageOwner }) {
     { label: "Students", value: stats.usersByRole.Student || 0, icon: GraduationCap },
     { label: "Parents", value: stats.usersByRole.Parent || 0, icon: UserCog },
     { label: "Owners", value: stats.usersByRole.Owner || 0, icon: Building2 },
+    { label: "Agents", value: stats.usersByRole.Agent || 0, icon: Briefcase },
     { label: "New signups", value: stats.newSignups30d, icon: Users },
     { label: "Active listings", value: stats.totalListings, icon: Building2 },
     { label: "Featured listings", value: stats.featuredListings, icon: Star },
@@ -3077,6 +3097,48 @@ function PlatformAdminView({ token, onManageOwner }) {
     },
   ];
 
+  // Agents tab — driven by stats.agentsOverview (listing count + inquiries +
+  // profile views per agent, computed server-side) rather than the plain
+  // users list, since that's the analytics an admin actually wants to see.
+  const agentsOverview = stats?.agentsOverview || [];
+  const filteredAgents = agentsOverview.filter((a) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return true;
+    return a.agentName.toLowerCase().includes(q) || a.agentEmail.toLowerCase().includes(q);
+  });
+  const agentColumns = [
+    { key: "agentName", label: "Name" },
+    {
+      key: "hostels", label: "Hostels/Apartments", render: (a) => {
+        const names = (a.listings || []).map((l) => l.name);
+        if (!names.length) return <span style={{ color: C.gray400 }}>—</span>;
+        return <span className="text-sm">{names.join(", ")}</span>;
+      },
+    },
+    { key: "agentEmail", label: "Email" },
+    { key: "listingsCount", label: "Listings" },
+    { key: "totalInquiries", label: "Inquiries" },
+    { key: "totalViews", label: "Profile views" },
+    { key: "createdAt", label: "Joined", render: (a) => a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "—" },
+    {
+      key: "manage", label: "", render: (a) => (
+        <button
+          onClick={() => handleManageOwner(a.agentId)}
+          disabled={impersonatingId === a.agentId}
+          style={{ color: C.blue }}
+          className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+        >
+          {impersonatingId === a.agentId ? "Opening…" : "Manage listings →"}
+        </button>
+      ),
+    },
+  ];
+  const agentSummaryStats = [
+    { label: "Total agents", value: agentsOverview.length, icon: Briefcase },
+    { label: "Agent listings", value: stats?.totalAgentListings ?? 0, icon: Building2 },
+    { label: "Agent inquiries", value: stats?.totalAgentInquiries ?? 0, icon: Inbox },
+  ];
+
   // Clicking "View students" on a listing opens this instead of jumping tabs —
   // a focused popup of just that property's students, by name.
   const [rosterListing, setRosterListing] = useState(null);
@@ -3085,6 +3147,13 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "name", label: "Property" },
     { key: "university", label: "University" },
     { key: "type", label: "Type" },
+    {
+      key: "listedBy", label: "Listed by", render: (l) => (
+        l.listedByAgent
+          ? <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#7c3aed" }}><Briefcase size={13} /> Agent</span>
+          : <span style={{ color: C.gray600 }} className="text-xs">Owner</span>
+      ),
+    },
     { key: "price", label: "Price", render: (l) => `GH₵${Number(l.price).toLocaleString()}` },
     { key: "featured", label: "Featured", render: (l) => (l.featured ? <BadgeCheck size={16} color={C.blue} /> : <span style={{ color: C.gray400 }}>—</span>) },
     { key: "rating", label: "Rating", render: (l) => l.rating ? `${l.rating} ★ (${l.reviewCount || 0})` : "No reviews yet" },
@@ -3118,7 +3187,7 @@ function PlatformAdminView({ token, onManageOwner }) {
           <Shield size={22} color={C.blue} />
           <div>
             <h1 style={{ color: C.ink }} className="text-xl sm:text-2xl font-extrabold">Platform admin</h1>
-            <p style={{ color: C.gray600 }} className="text-sm">Students, parents, owners, listings & inquiries — all in one place.</p>
+            <p style={{ color: C.gray600 }} className="text-sm">Students, parents, owners, agents, listings & inquiries — all in one place.</p>
           </div>
         </div>
         <button
@@ -3236,6 +3305,14 @@ function PlatformAdminView({ token, onManageOwner }) {
           )}
          {tab === "owners" && (
             <DataTable columns={ownerColumns} rows={byRole("Owner")} emptyLabel="No property owners found." />
+          )}
+          {tab === "agents" && (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-2 sm:gap-3 mb-4">
+                {agentSummaryStats.map((s) => <AdminStatCard key={s.label} {...s} />)}
+              </div>
+              <DataTable columns={agentColumns} rows={filteredAgents} emptyLabel="No agents found." />
+            </>
           )}
           {tab === "listings" && (
             <DataTable columns={listingColumns} rows={filteredListings} emptyLabel="No listings found." />
@@ -3443,6 +3520,10 @@ function viewFromPath(pathname) {
   return PATH_TO_VIEW[pathname] || "home";
 }
 
+// Owner and Agent accounts share the same listing dashboard — this just
+// centralizes the "is this account allowed in there" check.
+const isListingManagerRole = (role) => role === "Owner" || role === "Agent";
+
 /* ---------------------------------------------------------
    APP ROOT
 --------------------------------------------------------- */
@@ -3555,7 +3636,7 @@ export default function App() {
   }, []);
 
   const refreshOwnerStats = React.useCallback(() => {
-    if (!token || user?.role !== "Owner") { setOwnerStats(null); return; }
+    if (!token || !isListingManagerRole(user?.role)) { setOwnerStats(null); return; }
     setOwnerStatsLoading(true);
     api.getOwnerStats(token)
       .then((data) => setOwnerStats(data))
@@ -3566,7 +3647,7 @@ export default function App() {
   // Owner dashboard stats are fetched fresh whenever the dashboard is opened or the
   // owner's listings change, so they're always real numbers, never placeholders.
   React.useEffect(() => {
-    if (view === "admin" && user?.role === "Owner") refreshOwnerStats();
+    if (view === "admin" && isListingManagerRole(user?.role)) refreshOwnerStats();
   }, [view, user?.role, refreshOwnerStats]);
 
   // Used by the owner dashboard's "Students" popup to mark/unmark a
@@ -3579,7 +3660,7 @@ export default function App() {
   }, [token]);
 
   const refreshOwnerInquiries = React.useCallback(() => {
-    if (!token || user?.role !== "Owner") { setOwnerInquiries([]); return; }
+    if (!token || !isListingManagerRole(user?.role)) { setOwnerInquiries([]); return; }
     setOwnerInquiriesLoading(true);
     api.getInquiries(token)
       .then((data) => setOwnerInquiries(data.inquiries || []))
@@ -3588,11 +3669,11 @@ export default function App() {
   }, [token, user?.role]);
 
   React.useEffect(() => {
-    if (view === "admin" && user?.role === "Owner") refreshOwnerInquiries();
+    if (view === "admin" && isListingManagerRole(user?.role)) refreshOwnerInquiries();
   }, [view, user?.role, refreshOwnerInquiries]);
 
   const refreshMyListings = React.useCallback(() => {
-    if (!token || user?.role !== "Owner") { setMyListings([]); setMyMaxListings(1); return; }
+    if (!token || !isListingManagerRole(user?.role)) { setMyListings([]); setMyMaxListings(1); return; }
     setMyListingsLoading(true);
     api.getMyListings(token)
       .then((data) => { setMyListings(data.listings); setMyMaxListings(data.maxListings ?? 1); })
@@ -3601,7 +3682,7 @@ export default function App() {
   }, [token, user?.role]);
 
   React.useEffect(() => {
-    if (view === "admin" && user?.role === "Owner") refreshMyListings();
+    if (view === "admin" && isListingManagerRole(user?.role)) refreshMyListings();
   }, [view, user?.role, refreshMyListings]);
 
   const toggleFav = (id) => {
@@ -3651,10 +3732,10 @@ export default function App() {
 
  const goToAdmin = () => { if (user) { setView("admin"); } else { setAuthRedirect("admin"); setView("login"); } };
 
-  // "List your property" drops any signed-in Owner straight into their dashboard.
+  // "List your property" drops any signed-in Owner/Agent straight into their dashboard.
   const goToListProperty = () => {
     if (!user) { setAuthRedirect("admin"); setView("login"); return; }
-    if (user.role === "Owner") { setView("admin"); }
+    if (isListingManagerRole(user.role)) { setView("admin"); }
     else { setView("pricing"); }
   };
 
@@ -3747,7 +3828,7 @@ export default function App() {
         {view === "admin" && (
           !user ? (
             <LoginView onAuthSuccess={handleAuthSuccess} onGuest={handleGuest} setView={setView} redirectNote="Sign in to manage your property listings." universities={universities} />
-          ) : user.role !== "Owner" ? (
+          ) : !isListingManagerRole(user.role) ? (
             <NotOwnerNotice user={user} setView={setView} />
           ) : (
             <AdminView

@@ -105,8 +105,13 @@ app.use(express.json({
   verify: (req, res, buf) => { req.rawBody = buf.toString("utf8"); },
 }));
 
-const ROLES = ["Owner", "Student", "Parent"]; // roles the public signup form is allowed to create
+const ROLES = ["Owner", "Student", "Parent", "Agent"]; // roles the public signup form is allowed to create
 const ADMIN_ROLE = "Admin"; // never accepted from public /auth/signup — seeded below instead
+// Owner and Agent accounts both create/manage listings the same way — an Agent
+// just isn't capped on how many they can have (see plans.js AGENT_FEATURES).
+// Every place that used to say `role !== "Owner"` to gate listing management
+// now goes through this helper so Agents get the same access.
+const isListingManagerRole = (role) => role === "Owner" || role === "Agent";
 // The starting university, seeded into the `universities` table on first boot
 // if the table is empty. From then on the list is managed via the platform
 // admin dashboard (Universities tab) — see ensureUniversitySeeded() below.
@@ -161,7 +166,7 @@ function requireAuth(req, res, next) {
 const requireActiveOwner = ah(async (req, res, next) => {
   const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
-  if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts can manage listings." });
+  if (!isListingManagerRole(user.role)) return res.status(403).json({ error: "Only property owner or agent accounts can manage listings." });
   const view = computeSubscriptionView(user);
   if (!view.isListingVisible) {
     return res.status(403).json({ error: "Your trial or subscription isn't active. Subscribe to a plan to manage your listing.", subscriptionView: view });
@@ -197,7 +202,7 @@ const requireOwnsListing = ah(async (req, res, next) => {
 const requireCanCreateListing = ah(async (req, res, next) => {
   const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
-  if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts can create listings." });
+  if (!isListingManagerRole(user.role)) return res.status(403).json({ error: "Only property owner or agent accounts can create listings." });
 
   const ownerListings = await store.getListingsByOwner(user.id);
   const ownerListingCount = ownerListings.length;
@@ -554,6 +559,10 @@ function toPublicListing(listing, owner) {
     walkthrough: features.virtualWalkthrough ? (listing.walkthrough || []) : [],
     planTier: effectivePlan,
     searchPriority: features.searchPriority || 0,
+    // Lets the frontend show an "Agent listing" badge — students should know
+    // when they're dealing with a listing agent rather than the landlord
+    // directly.
+    listedByAgent: owner?.role === "Agent",
   };
 }
 
@@ -604,7 +613,7 @@ app.get("/api/listings", ah(async (req, res) => {
 app.get("/api/listings/mine", requireAuth, ah(async (req, res) => {
   const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
-  if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts have listings." });
+  if (!isListingManagerRole(user.role)) return res.status(403).json({ error: "Only property owner or agent accounts have listings." });
   const view = computeSubscriptionView(user);
   const ownerListings = await store.getListingsByOwner(user.id);
   const visibleIds = visibleListingIdsForOwner(user, ownerListings);
@@ -613,7 +622,10 @@ app.get("/api/listings/mine", requireAuth, ah(async (req, res) => {
     visible: visibleIds.has(l.id),
     photosOverLimit: Math.max(0, (l.images?.length || 0) - view.features.maxPhotos),
   }));
-  res.json({ listings, subscriptionView: view, maxListings: maxListingsForView(view) });
+  const limit = maxListingsForView(view);
+  // Infinity (Agent accounts) can't survive JSON — send null instead, and let
+  // the frontend treat a null maxListings as "no cap" rather than "cap of 0".
+  res.json({ listings, subscriptionView: view, maxListings: Number.isFinite(limit) ? limit : null });
 }));
 
 app.post("/api/listings", requireAuth, requireCanCreateListing, ah(async (req, res) => {
@@ -781,13 +793,13 @@ app.get("/api/inquiries", requireAuth, ah(async (req, res) => {
   if (user.role === ADMIN_ROLE) {
     return res.json({ inquiries: await withPriority(await store.getInquiries()) });
   }
-  if (user.role === "Owner") {
+  if (isListingManagerRole(user.role)) {
     const listings = await store.getListings();
     const myListingIds = new Set(listings.filter((l) => l.ownerId === user.id).map((l) => l.id));
     const inquiries = await store.getInquiries();
     return res.json({ inquiries: await withPriority(inquiries.filter((i) => myListingIds.has(i.listingId))) });
   }
-  return res.status(403).json({ error: "Only property owners and platform admins can view inquiries." });
+  return res.status(403).json({ error: "Only property owners, agents and platform admins can view inquiries." });
 }));
 
 // Marks (or unmarks) a student as an actual confirmed resident — separate from
@@ -816,7 +828,7 @@ app.patch("/api/inquiries/:id/confirm", requireAuth, ah(async (req, res) => {
 app.get("/api/owner/stats", requireAuth, ah(async (req, res) => {
   const user = await store.getUserById(req.user.sub);
   if (!user) return res.status(404).json({ error: "User not found." });
-  if (user.role !== "Owner") return res.status(403).json({ error: "Only property owner accounts have a dashboard." });
+  if (!isListingManagerRole(user.role)) return res.status(403).json({ error: "Only property owner or agent accounts have a dashboard." });
 
   const allListings = await store.getListings();
   const myListings = allListings.filter((l) => l.ownerId === user.id);
@@ -948,15 +960,41 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
   const listings = await store.getListings();
   const inquiries = await store.getInquiries();
 
-  const byRole = { Student: 0, Parent: 0, Owner: 0, Admin: 0 };
+  const byRole = { Student: 0, Parent: 0, Owner: 0, Agent: 0, Admin: 0 };
   const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
   let newSignups30d = 0;
 
   const ownersOverview = [];
+  // Per-agent analytics for the platform admin's Agents tab — listing count,
+  // inquiries received across all their listings, and profile views, so an
+  // admin can see at a glance which agents are actually active.
+  const agentsOverview = [];
+  const inquiriesByListingId = {};
+  for (const i of inquiries) {
+    inquiriesByListingId[i.listingId] = (inquiriesByListingId[i.listingId] || 0) + 1;
+  }
 
   for (const u of users) {
     if (byRole[u.role] !== undefined) byRole[u.role] += 1;
     if (u.createdAt && new Date(u.createdAt).getTime() >= thirtyDaysAgo) newSignups30d += 1;
+
+    if (u.role === "Agent") {
+      const agentListings = await store.getListingsByOwner(u.id);
+      const totalInquiries = agentListings.reduce((sum, l) => sum + (inquiriesByListingId[l.id] || 0), 0);
+      const totalViews = agentListings.reduce((sum, l) => sum + (l.views?.length || 0), 0);
+      agentsOverview.push({
+        agentId: u.id,
+        agentName: u.name,
+        agentEmail: u.email,
+        listings: agentListings.map((l) => ({ id: l.id, name: l.name, university: l.university })),
+        listingsCount: agentListings.length,
+        totalInquiries,
+        totalViews,
+        createdAt: u.createdAt,
+      });
+      continue;
+    }
+
     if (u.role !== "Owner") continue;
 
     const view = computeSubscriptionView(u);
@@ -997,6 +1035,9 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
     recentSignups,
     topListings,
     ownersOverview,
+    agentsOverview,
+    totalAgentListings: agentsOverview.reduce((sum, a) => sum + a.listingsCount, 0),
+    totalAgentInquiries: agentsOverview.reduce((sum, a) => sum + a.totalInquiries, 0),
   });
 }));
 

@@ -98,6 +98,7 @@ export function RoleBadge({ role }) {
     Student: { bg: "#e6f2fb", fg: C.blue },
     Parent: { bg: "#fff4e0", fg: "#8a6300" },
     Owner: { bg: "#e6f7e9", fg: C.green },
+    Agent: { bg: "#f3e8ff", fg: "#7c3aed" },
     Admin: { bg: "#fdecea", fg: "#b3261e" },
   };
   const c = colors[role] || { bg: C.blueLight, fg: C.blue };
