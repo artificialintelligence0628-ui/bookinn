@@ -246,6 +246,16 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
             )}
           </div>
 
+          {isAdminPanel && platformAdminUser && (
+            <button
+              onClick={onAdminSignOut}
+              style={{ borderColor: "rgba(255,255,255,0.4)", color: C.white }}
+              className="md:hidden text-sm font-semibold px-3 py-1.5 rounded-md border flex items-center gap-1.5 active:bg-white/10"
+            >
+              <LogOut size={15} /> Sign out
+            </button>
+          )}
+
           {!isAdminPanel && (
             <button className="md:hidden text-white" onClick={() => setMobileOpen(!mobileOpen)} aria-label={mobileOpen ? "Close menu" : "Open menu"}>
               {mobileOpen ? <X size={24} /> : <Menu size={24} />}
@@ -2893,6 +2903,11 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "emails", label: "Emails" },
   ];
   const [tab, setTab] = useState("overview");
+  const tabBarRef = useRef(null);
+  useEffect(() => {
+    const el = tabBarRef.current?.querySelector('[data-active="true"]');
+    el?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+  }, [tab]);
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [inquiries, setInquiries] = useState([]);
@@ -3181,22 +3196,23 @@ function PlatformAdminView({ token, onManageOwner }) {
   ];
 
   return (
-    <div className="max-w-6xl mx-auto px-4 md:px-6 py-8">
-      <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
-        <div className="flex items-center gap-2">
-          <Shield size={22} color={C.blue} />
-          <div>
-            <h1 style={{ color: C.ink }} className="text-xl sm:text-2xl font-extrabold">Platform admin</h1>
-            <p style={{ color: C.gray600 }} className="text-sm">Students, parents, owners, agents, listings & inquiries — all in one place.</p>
+    <div className="max-w-6xl mx-auto px-4 md:px-6 py-5 md:py-8">
+      <div className="flex items-start justify-between gap-3 mb-4 md:mb-6">
+        <div className="flex items-start gap-2 min-w-0">
+          <Shield size={22} color={C.blue} className="shrink-0 mt-0.5 sm:mt-1" />
+          <div className="min-w-0">
+            <h1 style={{ color: C.ink }} className="text-xl sm:text-2xl font-extrabold leading-tight">Platform admin</h1>
+            <p style={{ color: C.gray600 }} className="text-xs sm:text-sm mt-0.5">Users, listings & inquiries in one place.</p>
           </div>
         </div>
         <button
           onClick={loadAll}
           disabled={loading}
+          aria-label="Refresh"
           style={{ borderColor: C.border, color: C.ink }}
-          className="border rounded-md px-3 py-2 text-sm font-semibold flex items-center gap-1.5 bg-white hover:bg-slate-50 disabled:opacity-60"
+          className="border rounded-md w-10 h-10 sm:w-auto sm:h-auto sm:px-3 sm:py-2 text-sm font-semibold flex items-center justify-center gap-1.5 bg-white hover:bg-slate-50 disabled:opacity-60 shrink-0"
         >
-          <RefreshCw size={15} className={loading ? "animate-spin" : ""} /> Refresh
+          <RefreshCw size={16} className={loading ? "animate-spin" : ""} /> <span className="hidden sm:inline">Refresh</span>
         </button>
       </div>
 
@@ -3206,17 +3222,18 @@ function PlatformAdminView({ token, onManageOwner }) {
         </div>
       )}
 
-      <div className="flex gap-2 overflow-x-auto mb-6 pb-1">
+      <div ref={tabBarRef} className="flex gap-2 overflow-x-auto no-scrollbar mb-5 md:mb-6 pb-1 -mx-4 px-4 md:mx-0 md:px-0">
         {TABS.map((t) => (
           <button
             key={t.key}
+            data-active={tab === t.key ? "true" : undefined}
             onClick={() => setTab(t.key)}
             style={{
               background: tab === t.key ? C.blue : C.white,
               color: tab === t.key ? C.white : C.ink,
               borderColor: C.border,
             }}
-            className="border rounded-md px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap"
+            className="border rounded-full md:rounded-md px-4 md:px-3.5 py-2 md:py-1.5 text-sm font-semibold whitespace-nowrap shrink-0"
           >
             {t.label}
           </button>
@@ -3272,7 +3289,7 @@ function PlatformAdminView({ token, onManageOwner }) {
 
           {tab !== "overview" && tab !== "emails" && tab !== "universities" && (
             <div className="flex flex-wrap items-center gap-3 mb-4">
-              <div className="relative max-w-sm w-full sm:w-auto flex-1">
+              <div className="relative sm:max-w-sm w-full sm:w-auto flex-1">
                 <Search size={16} style={{ color: C.gray400 }} className="absolute left-3 top-1/2 -translate-y-1/2" />
                 <input
                   value={query}
@@ -3288,7 +3305,7 @@ function PlatformAdminView({ token, onManageOwner }) {
                   value={universityFilter}
                   onChange={(e) => setUniversityFilter(e.target.value)}
                   style={{ borderColor: C.border, color: C.ink }}
-                  className="border rounded-md px-3 py-2 text-sm bg-white"
+                  className="border rounded-md px-3 py-2 text-sm bg-white w-full sm:w-auto"
                 >
                   <option value="All">All universities</option>
                   {universities.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
