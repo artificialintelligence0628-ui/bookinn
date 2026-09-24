@@ -5,3 +5,7 @@
 body {
   margin: 0;
 }
+
+/* Hide the scrollbar on swipeable rows (admin tab bar) while keeping them scrollable */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; }
