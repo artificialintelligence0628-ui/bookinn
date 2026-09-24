@@ -2902,12 +2902,7 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "universities", label: "Universities" },
     { key: "emails", label: "Emails" },
   ];
-  const [tab, setTab] = useState("overview");
-  const tabBarRef = useRef(null);
-  useEffect(() => {
-    const el = tabBarRef.current?.querySelector('[data-active="true"]');
-    el?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
-  }, [tab]);
+ 
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [inquiries, setInquiries] = useState([]);
@@ -3222,18 +3217,17 @@ function PlatformAdminView({ token, onManageOwner }) {
         </div>
       )}
 
-      <div ref={tabBarRef} className="flex gap-2 overflow-x-auto no-scrollbar mb-5 md:mb-6 pb-1 -mx-4 px-4 md:mx-0 md:px-0">
+           <div className="grid grid-cols-3 gap-2 mb-5 md:flex md:flex-wrap md:mb-6">
         {TABS.map((t) => (
           <button
             key={t.key}
-            data-active={tab === t.key ? "true" : undefined}
             onClick={() => setTab(t.key)}
             style={{
               background: tab === t.key ? C.blue : C.white,
               color: tab === t.key ? C.white : C.ink,
               borderColor: C.border,
             }}
-            className="border rounded-full md:rounded-md px-4 md:px-3.5 py-2 md:py-1.5 text-sm font-semibold whitespace-nowrap shrink-0"
+            className="border rounded-md px-2 md:px-3.5 py-2.5 md:py-1.5 text-[13px] md:text-sm font-semibold whitespace-nowrap text-center"
           >
             {t.label}
           </button>
