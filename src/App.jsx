@@ -1968,7 +1968,65 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
         </div>
       )}
 
-      <div style={{ borderColor: C.border }} className="border rounded-lg bg-white overflow-hidden">
+      {/* Phones: one card per listing (a 6-column fixed table is too cramped) */}
+      <div className="md:hidden flex flex-col gap-3">
+        {listings.map((l) => (
+          <div key={l.id} style={{ borderColor: C.border }} className="border rounded-lg bg-white p-3.5">
+            <div className="flex items-start gap-3">
+              <img src={img(l.image, 100)} alt={l.name} loading="lazy" className="w-12 h-12 rounded object-cover flex-shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p style={{ color: C.ink }} className="font-semibold text-[15px] leading-snug break-words">{l.name}</p>
+                <p style={{ color: C.gray600 }} className="text-xs mt-0.5 break-words">{l.university}</p>
+              </div>
+              <div className="shrink-0">
+                {l.visible !== false ? <Badge tone="green">Active</Badge> : <Badge tone="red">Paused</Badge>}
+              </div>
+            </div>
+
+            <div className="mt-3 flex flex-col gap-1">
+              {(l.roomOptions || []).map((r) => (
+                <div key={r.roomType} className="flex items-center justify-between gap-3 text-sm">
+                  <span style={{ color: C.ink }} className="min-w-0 break-words">{r.roomType}</span>
+                  <span style={{ color: C.ink }} className="font-semibold whitespace-nowrap">GH₵{Number(r.price).toLocaleString()}</span>
+                </div>
+              ))}
+              <p style={{ color: C.gray600 }} className="text-xs">{l.pricingPeriod || "Per semester"}</p>
+              {l.photosOverLimit > 0 && (
+                <p style={{ color: C.yellowDark }} className="text-[11px]">{l.photosOverLimit} photo{l.photosOverLimit > 1 ? "s" : ""} hidden over plan limit</p>
+              )}
+            </div>
+
+            <div style={{ borderColor: C.border }} className="border-t mt-3 pt-3 flex items-center gap-2">
+              <button
+                onClick={() => setRosterListing(l)}
+                style={{ color: C.blue, borderColor: C.border }}
+                className="flex-1 border rounded-md py-2 text-sm font-semibold whitespace-nowrap"
+              >
+                View students
+              </button>
+              <button
+                onClick={() => startEdit(l)}
+                aria-label={`Edit ${l.name}`}
+                style={{ borderColor: C.border, color: C.ink }}
+                className="border rounded-md w-11 h-10 flex items-center justify-center shrink-0"
+              >
+                <Pencil size={16} color={C.gray600} />
+              </button>
+              <button
+                onClick={() => handleDelete(l.id)}
+                disabled={deletingId === l.id}
+                aria-label={`Delete ${l.name}`}
+                style={{ borderColor: C.border }}
+                className="border rounded-md w-11 h-10 flex items-center justify-center shrink-0 disabled:opacity-60"
+              >
+                <Trash2 size={16} color={deletingId === l.id ? C.gray400 : "#b3261e"} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ borderColor: C.border }} className="hidden md:block border rounded-lg bg-white overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-sm" style={{ tableLayout: "fixed" }}>
             <thead>
