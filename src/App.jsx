@@ -2961,6 +2961,7 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "emails", label: "Emails" },
   ];
   const [tab, setTab] = useState("overview");
+  const [menuOpen, setMenuOpen] = useState(false);
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [inquiries, setInquiries] = useState([]);
@@ -3275,7 +3276,47 @@ function PlatformAdminView({ token, onManageOwner }) {
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-2 mb-5 md:flex md:flex-wrap md:mb-6">
+      {/* Phones: hamburger menu that lists every section */}
+      <div className="md:hidden relative mb-5">
+        <button
+          onClick={() => setMenuOpen((o) => !o)}
+          aria-label={menuOpen ? "Close sections menu" : "Open sections menu"}
+          aria-expanded={menuOpen}
+          style={{ borderColor: C.border }}
+          className="w-full flex items-center gap-3 border rounded-lg bg-white px-2.5 py-2 text-left"
+        >
+          <span style={{ borderColor: C.border, background: C.blueMist }} className="w-10 h-10 border rounded-lg flex items-center justify-center shrink-0">
+            {menuOpen ? <X size={20} color={C.navy} /> : <Menu size={20} color={C.navy} />}
+          </span>
+          <span className="min-w-0">
+            <span style={{ color: C.gray600 }} className="block text-[11px] leading-none mb-1">Section</span>
+            <span style={{ color: C.ink }} className="block text-[15px] font-bold leading-none truncate">{TABS.find((t) => t.key === tab)?.label}</span>
+          </span>
+          <ChevronDown size={18} color={C.gray600} className={`ml-auto shrink-0 transition-transform ${menuOpen ? "rotate-180" : ""}`} />
+        </button>
+        {menuOpen && (
+          <div style={{ borderColor: C.border }} className="absolute z-30 left-0 right-0 mt-2 border rounded-lg bg-white shadow-lg overflow-hidden">
+            {TABS.map((t) => (
+              <button
+                key={t.key}
+                onClick={() => { setTab(t.key); setMenuOpen(false); }}
+                style={{
+                  background: tab === t.key ? C.blueLight : C.white,
+                  color: tab === t.key ? C.blue : C.ink,
+                  borderColor: C.border,
+                }}
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-left border-b last:border-0"
+              >
+                {t.label}
+                {tab === t.key && <Check size={16} color={C.blue} />}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Tablet/desktop: tab row */}
+      <div className="hidden md:flex md:flex-wrap gap-2 mb-6">
         {TABS.map((t) => (
           <button
             key={t.key}
@@ -3285,7 +3326,7 @@ function PlatformAdminView({ token, onManageOwner }) {
               color: tab === t.key ? C.white : C.ink,
               borderColor: C.border,
             }}
-            className="border rounded-md px-2 md:px-3.5 py-2.5 md:py-1.5 text-[13px] md:text-sm font-semibold whitespace-nowrap text-center"
+            className="border rounded-md px-3.5 py-1.5 text-sm font-semibold whitespace-nowrap"
           >
             {t.label}
           </button>
