@@ -157,7 +157,7 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
     <button
       onClick={() => { setView(key); setMobileOpen(false); }}
       style={{ color: view === key ? C.white : "rgba(255,255,255,0.85)" }}
-      className="text-sm font-semibold hover:text-white transition px-1"
+      className="text-sm font-semibold hover:text-white transition px-1 text-left"
     >
       {label}
     </button>
@@ -264,31 +264,43 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
         </div>
 
         {!isAdminPanel && mobileOpen && (
-          <div className="md:hidden pb-4 flex flex-col gap-3 border-t" style={{ borderColor: "rgba(255,255,255,0.15)" }}>
-            <div className="pt-3 flex flex-col gap-3">
-              {navItem("home", "Explore stays")}
-              {navItem("saved", `Saved${favCount ? ` (${favCount})` : ""}`)}
-              <button
-                onClick={() => { onListPropertyClick(); setMobileOpen(false); }}
-                style={{ color: "rgba(255,255,255,0.85)" }}
-                className="text-sm font-semibold hover:text-white transition px-1 text-left"
-              >
-                List your property
-              </button>
-              <button
-                onClick={() => { onOwnerDashboardClick(); setMobileOpen(false); }}
-                style={{ color: "rgba(255,255,255,0.85)" }}
-                className="text-sm font-semibold hover:text-white transition px-1 text-left"
-              >
-                {user?.role === "Agent" ? "Agent dashboard" : "Owner dashboard"}
-              </button>
-              {user && navItem("account", "My account")}
+          <div className="md:hidden pb-3 border-t" style={{ borderColor: "rgba(255,255,255,0.15)" }}>
+            <div className="flex flex-col">
+              {[
+                { key: "home", label: "Explore stays", onClick: () => setView("home") },
+                { key: "saved", label: `Saved${favCount ? ` (${favCount})` : ""}`, onClick: () => setView("saved") },
+                { key: "list", label: "List your property", onClick: onListPropertyClick },
+                { key: "dash", label: user?.role === "Agent" ? "Agent dashboard" : "Owner dashboard", onClick: onOwnerDashboardClick },
+                ...(user ? [{ key: "account", label: "My account", onClick: () => setView("account") }] : []),
+              ].map((item) => (
+                <button
+                  key={item.key}
+                  onClick={() => { item.onClick(); setMobileOpen(false); }}
+                  style={{
+                    color: view === item.key ? C.white : "rgba(255,255,255,0.85)",
+                    borderColor: "rgba(255,255,255,0.1)",
+                  }}
+                  className="w-full text-left text-base font-semibold py-3.5 border-b hover:text-white transition"
+                >
+                  {item.label}
+                </button>
+              ))}
               {user ? (
-                <button onClick={() => { onSignOut(); setMobileOpen(false); }} style={{ color: "rgba(255,255,255,0.85)" }} className="text-sm font-semibold hover:text-white transition px-1 text-left">
-                  Sign out ({user.name.split(" ")[0]})
+                <button
+                  onClick={() => { onSignOut(); setMobileOpen(false); }}
+                  style={{ color: "rgba(255,255,255,0.85)" }}
+                  className="w-full text-left text-base font-semibold py-3.5 flex items-center gap-2 hover:text-white transition"
+                >
+                  <LogOut size={17} /> Sign out ({user.name.split(" ")[0]})
                 </button>
               ) : (
-                navItem("login", "Sign in")
+                <button
+                  onClick={() => { setView("login"); setMobileOpen(false); }}
+                  style={{ background: C.white, color: C.navy }}
+                  className="mt-3 w-full text-base font-semibold py-3 rounded-md flex items-center justify-center gap-2"
+                >
+                  <LogIn size={17} /> Sign in
+                </button>
               )}
             </div>
           </div>
