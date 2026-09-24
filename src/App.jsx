@@ -2902,7 +2902,7 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "universities", label: "Universities" },
     { key: "emails", label: "Emails" },
   ];
- 
+  const [tab, setTab] = useState("overview");
   const [stats, setStats] = useState(null);
   const [users, setUsers] = useState([]);
   const [inquiries, setInquiries] = useState([]);
@@ -3217,7 +3217,7 @@ function PlatformAdminView({ token, onManageOwner }) {
         </div>
       )}
 
-           <div className="grid grid-cols-3 gap-2 mb-5 md:flex md:flex-wrap md:mb-6">
+      <div className="grid grid-cols-3 gap-2 mb-5 md:flex md:flex-wrap md:mb-6">
         {TABS.map((t) => (
           <button
             key={t.key}
