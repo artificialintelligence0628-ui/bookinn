@@ -1657,13 +1657,13 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <input placeholder="Property name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
-              style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+              style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0" />
             <select value={form.university} aria-label="University" onChange={(e) => setForm({ ...form, university: e.target.value })}
-              style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
+              style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0">
               {universities.map((u) => <option key={u}>{u}</option>)}
             </select>
             <select value={form.bath} aria-label="Bathroom type" onChange={(e) => setForm({ ...form, bath: e.target.value })}
-              style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
+              style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0">
               {["Shared bath", "Ensuite bath"].map((b) => <option key={b}>{b}</option>)}
             </select>
           </div>
@@ -1681,11 +1681,11 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
             <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Distance from campus</p>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <input type="number" min="0" step="0.1" placeholder="Distance (km)" value={form.travelKm} onChange={(e) => setForm({ ...form, travelKm: e.target.value })}
-                style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+                style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0" />
               <input type="number" min="1" placeholder="Minutes" value={form.travelMinutes} onChange={(e) => setForm({ ...form, travelMinutes: e.target.value })}
-                style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+                style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0" />
               <select value={form.travelMode} aria-label="Travel mode" onChange={(e) => setForm({ ...form, travelMode: e.target.value })}
-                style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
+                style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0">
                 <option value="walk">min walk to campus</option>
                 <option value="drive">min drive to campus</option>
               </select>
@@ -1710,9 +1710,9 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
             <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Contact for booking requests</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input type="email" placeholder="Your email address" value={form.ownerEmail} onChange={(e) => setForm({ ...form, ownerEmail: e.target.value })}
-                style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+                style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0" />
               <input type="tel" placeholder="Your WhatsApp number, e.g. 0244000000" value={form.ownerWhatsapp} onChange={(e) => setForm({ ...form, ownerWhatsapp: e.target.value })}
-                style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+                style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0" />
             </div>
             <p style={{ color: C.gray600 }} className="text-xs mt-1.5">Required — when a student sends a booking request, it's sent straight to your email or WhatsApp. Add at least one.</p>
           </div>
@@ -1726,7 +1726,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                   type="button"
                   onClick={() => setForm((f) => ({ ...f, availability: s }))}
                   style={{ background: form.availability === s ? C.blue : C.white, color: form.availability === s ? C.white : C.ink, borderColor: C.border }}
-                  className="border rounded-md px-3 py-2 text-sm font-semibold flex-1"
+                  className="border rounded-md px-3 py-2 text-sm font-semibold flex-1 min-w-0"
                 >
                   {s}
                 </button>
@@ -1743,7 +1743,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                   key={t}
                   onClick={() => setForm((f) => ({ ...f, type: t, roomType: t === "Hostel" ? HOSTEL_ROOM_TYPES[0] : APARTMENT_ROOM_TYPES[0] }))}
                   style={{ background: form.type === t ? C.blue : C.white, color: form.type === t ? C.white : C.ink, borderColor: C.border }}
-                  className="border rounded-md px-4 py-2 text-sm font-semibold flex-1"
+                  className="border rounded-md px-4 py-2 text-sm font-semibold flex-1 min-w-0"
                 >
                   {t}
                 </button>
@@ -1779,7 +1779,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                         value={r.availability}
                         onChange={(e) => setHostelRoomAvailability(r.roomType, e.target.value)}
                         style={{ borderColor: C.border, color: C.ink }}
-                        className="border rounded-md px-2 py-1.5 text-xs outline-none"
+                        className="border rounded-md px-2 py-1.5 text-xs outline-none max-w-full"
                       >
                         {AVAILABILITY_STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                       </select>
@@ -1793,11 +1793,11 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
               <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Room type &amp; price</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <select value={form.roomType} aria-label="Room type" onChange={(e) => setForm({ ...form, roomType: e.target.value })}
-                  style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none">
+                  style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0">
                   {roomTypeOptions.map((r) => <option key={r}>{r}</option>)}
                 </select>
                 <input type="number" placeholder="Price (GH₵)" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })}
-                  style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+                  style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none w-full min-w-0" />
               </div>
             </div>
           )}
