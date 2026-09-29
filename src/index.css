@@ -9,3 +9,8 @@ body {
 /* Hide the scrollbar on swipeable rows (admin tab bar) while keeping them scrollable */
 .no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* Guard against mobile "tilt": a single over-wide control must never widen the
+   page, otherwise the browser zooms out and content hugs the left edge. */
+html, body { max-width: 100%; overflow-x: hidden; }
+input, select, textarea { max-width: 100%; }
