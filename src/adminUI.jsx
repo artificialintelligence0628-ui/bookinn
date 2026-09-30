@@ -122,7 +122,7 @@ export function DataTable({ columns, rows, emptyLabel }) {
             <tr style={{ borderColor: C.border }} className="border-b">
               {columns.map((c) => (
                 <th key={c.key} style={{ color: C.gray600 }} className="text-left font-semibold px-4 py-3 whitespace-nowrap">
-                  {c.label}
+                  {c.label || c.headerLabel}
                 </th>
               ))}
             </tr>
