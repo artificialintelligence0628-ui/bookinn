@@ -2962,6 +2962,32 @@ function StudentRosterLists({ residents, requests, onToggle }) {
    Admin login.
 --------------------------------------------------------- */
 
+// Tidies a property name for the admin tables: collapses stray spaces around
+// punctuation ("HOSTEL , BETHEL", "( NORTH LEGON)") and converts ALL-CAPS names
+// to Title Case. Names an owner already typed in mixed case are left alone.
+function prettyPropertyName(name) {
+  const s = String(name || "")
+    .replace(/\s+/g, " ")
+    .replace(/\(\s+/g, "(")
+    .replace(/\s+\)/g, ")")
+    .replace(/\s+,/g, ",")
+    .trim();
+  if (s !== s.toUpperCase()) return s;
+  return s.toLowerCase().replace(/(^|[\s(\-/])([a-z])/g, (m, p, c) => p + c.toUpperCase());
+}
+
+// One property per line (instead of one long comma-joined string) so long lists
+// stay readable in both the desktop table and the mobile cards.
+function PropertyNameList({ names }) {
+  return (
+    <ul className="flex flex-col gap-1.5 text-sm leading-snug">
+      {names.map((n, i) => (
+        <li key={i} className="md:whitespace-nowrap">{prettyPropertyName(n)}</li>
+      ))}
+    </ul>
+  );
+}
+
 function PlatformAdminView({ token, onManageOwner }) {
   const TABS = [
     { key: "overview", label: "Overview" },
@@ -3159,10 +3185,10 @@ function PlatformAdminView({ token, onManageOwner }) {
   const ownerColumns = [
     personColumns[0], // Name
     {
-      key: "hostels", label: "Hostels/Apartments", render: (u) => {
+      key: "hostels", label: "Hostels/Apartments", stacked: true, render: (u) => {
         const names = listingNamesByOwnerId[u.id] || [];
         if (names.length === 0) return <span style={{ color: C.gray400 }}>—</span>;
-        return <span className="text-sm">{names.join(", ")}</span>;
+        return <PropertyNameList names={names} />;
       },
     },
     ...personColumns.slice(1), // Email, Role, Joined
@@ -3239,10 +3265,10 @@ function PlatformAdminView({ token, onManageOwner }) {
       ),
     },
     {
-      key: "hostels", label: "Hostels/Apartments", render: (a) => {
+      key: "hostels", label: "Hostels/Apartments", stacked: true, render: (a) => {
         const names = (a.listings || []).map((l) => l.name);
         if (!names.length) return <span style={{ color: C.gray400 }}>—</span>;
-        return <span className="text-sm">{names.join(", ")}</span>;
+        return <PropertyNameList names={names} />;
       },
     },
     { key: "agentEmail", label: "Email" },
