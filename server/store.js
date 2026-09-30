@@ -20,6 +20,7 @@ function mapUser(row) {
     emailVerified: row.email_verified,
     university: row.university,
     officialAgent: !!row.official_agent,
+    passwordChangedAt: row.password_changed_at,
   };
 }
 
@@ -199,6 +200,35 @@ export const store = {
   },
   async getUserById(id) {
     const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
+    return mapUser(rows[0]);
+  },
+  // Used by requireAuth on every request: null means the account no longer
+  // exists; otherwise when its password was last changed by an admin (or null).
+  async getAuthState(id) {
+    const { rows } = await pool.query("SELECT password_changed_at FROM users WHERE id = $1", [id]);
+    return rows[0] ? { passwordChangedAt: rows[0].password_changed_at } : null;
+  },
+  // Admin edit of an account's login email and/or password. A changed email is
+  // marked unverified again (and any pending verify token cleared) because the
+  // new address hasn't been confirmed; a changed password stamps
+  // password_changed_at so older login tokens stop working.
+  async adminUpdateUser(id, { email, passwordHash }) {
+    const sets = [];
+    const values = [];
+    let i = 1;
+    if (email !== undefined) {
+      sets.push(`email = $${i++}`, "email_verified = false", "verify_token = NULL", "verify_token_expires = NULL");
+      values.push(email);
+    }
+    if (passwordHash !== undefined) {
+      sets.push(`password_hash = $${i++}`, "password_changed_at = now()", "reset_token = NULL", "reset_token_expires = NULL");
+      values.push(passwordHash);
+    }
+    if (!sets.length) return this.getUserById(id);
+    values.push(id);
+    const { rows } = await pool.query(
+      `UPDATE users SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`, values
+    );
     return mapUser(rows[0]);
   },
   // Permanently removes an account. Its listings are removed by the
