@@ -92,7 +92,14 @@ export function DataTable({ columns, rows, emptyLabel }) {
               {cellValue(titleCol, row)}
             </div>
             <dl className="mt-2 flex flex-col gap-1.5">
-              {detailCols.map((c) => (
+              {detailCols.map((c) => c.stacked ? (
+                // Long list values (e.g. property names) get the full card width
+                // under their label instead of being squeezed beside it.
+                <div key={c.key} className="text-sm">
+                  <dt style={{ color: C.gray600 }} className="text-xs mb-1">{c.label}</dt>
+                  <dd style={{ color: C.ink }} className="min-w-0">{cellValue(c, row)}</dd>
+                </div>
+              ) : (
                 <div key={c.key} className="flex items-start justify-between gap-4 text-sm">
                   <dt style={{ color: C.gray600 }} className="text-xs pt-0.5 shrink-0">{c.label}</dt>
                   <dd style={{ color: C.ink }} className="min-w-0 text-right break-words">{cellValue(c, row)}</dd>
