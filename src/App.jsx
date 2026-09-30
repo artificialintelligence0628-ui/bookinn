@@ -3159,6 +3159,27 @@ function PlatformAdminView({ token, onManageOwner }) {
     }
   };
 
+  // Admin can change the contact email booking requests for one listing go to.
+  const [editingEmailId, setEditingEmailId] = useState(null);
+  const editListingEmailAsAdmin = async (l) => {
+    const input = window.prompt(
+      `Contact email for "${l.name}":\n\nBooking requests for this listing will be sent here. Leave empty to remove it.`,
+      l.ownerEmail || ""
+    );
+    if (input === null) return; // cancelled
+    const email = input.trim();
+    if (email === (l.ownerEmail || "")) return;
+    setEditingEmailId(l.id);
+    try {
+      const { listing } = await api.adminUpdateListingEmail(l.id, email, token);
+      setListings((prev) => prev.map((x) => (x.id === l.id ? { ...x, ownerEmail: listing.ownerEmail } : x)));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setEditingEmailId(null);
+    }
+  };
+
   // Admin can delete any listing (owner or agent). Inquiries on it go with it.
   const [deletingListingId, setDeletingListingId] = useState(null);
   const deleteListingAsAdmin = async (l) => {
@@ -3303,17 +3324,19 @@ function PlatformAdminView({ token, onManageOwner }) {
     ...personColumns.slice(1), // Email, Role, Joined
     {
       key: "manage", label: "", render: (u) => (
-        <button
-          onClick={() => handleManageOwner(u.id)}
-          disabled={impersonatingId === u.id}
-          style={{ color: C.blue }}
-          className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
-        >
-          {impersonatingId === u.id ? "Opening…" : "Manage listings →"}
-        </button>
+        <span className="flex items-center gap-4">
+          <button
+            onClick={() => handleManageOwner(u.id)}
+            disabled={impersonatingId === u.id}
+            style={{ color: C.blue }}
+            className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+          >
+            {impersonatingId === u.id ? "Opening…" : "Manage listings →"}
+          </button>
+          {deleteButton(u.id, u.name, u.role, (listingNamesByOwnerId[u.id] || []).length)}
+        </span>
       ),
     },
-    personDeleteColumn,
   ];
 
   // Agents tab — driven by stats.agentsOverview (listing count + inquiries +
@@ -3363,6 +3386,21 @@ function PlatformAdminView({ token, onManageOwner }) {
       ),
     },
     {
+      key: "manage", label: "Actions", render: (a) => (
+        <span className="flex flex-col items-start gap-1.5">
+          <button
+            onClick={() => handleManageOwner(a.agentId)}
+            disabled={impersonatingId === a.agentId}
+            style={{ color: C.blue }}
+            className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+          >
+            {impersonatingId === a.agentId ? "Opening…" : "Manage listings →"}
+          </button>
+          {deleteButton(a.agentId, a.agentName, "Agent", (a.listings || []).length)}
+        </span>
+      ),
+    },
+    {
       key: "official", label: "Official BookInn Agent", render: (a) => (
         <button
           onClick={() => toggleOfficialAgent(a)}
@@ -3386,21 +3424,6 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "totalInquiries", label: "Inquiries" },
     { key: "totalViews", label: "Profile views" },
     { key: "createdAt", label: "Joined", render: (a) => a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "—" },
-    {
-      key: "manage", label: "", render: (a) => (
-        <button
-          onClick={() => handleManageOwner(a.agentId)}
-          disabled={impersonatingId === a.agentId}
-          style={{ color: C.blue }}
-          className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
-        >
-          {impersonatingId === a.agentId ? "Opening…" : "Manage listings →"}
-        </button>
-      ),
-    },
-    {
-      key: "delete", label: "", render: (a) => deleteButton(a.agentId, a.agentName, "Agent", (a.listings || []).length),
-    },
   ];
   const agentSummaryStats = [
     { label: "Total agents", value: agentsOverview.length, icon: Briefcase },
@@ -3428,6 +3451,7 @@ function PlatformAdminView({ token, onManageOwner }) {
       ),
     },
     { key: "price", label: "Price", render: (l) => `GH₵${Number(l.price).toLocaleString()}` },
+    { key: "ownerEmail", label: "Contact email", render: (l) => l.ownerEmail || <span style={{ color: C.gray400 }}>—</span> },
     { key: "featured", label: "Featured", render: (l) => (l.featured ? <BadgeCheck size={16} color={C.blue} /> : <span style={{ color: C.gray400 }}>—</span>) },
     { key: "rating", label: "Rating", render: (l) => l.rating ? `${l.rating} ★ (${l.reviewCount || 0})` : "No reviews yet" },
    {
@@ -3443,14 +3467,24 @@ function PlatformAdminView({ token, onManageOwner }) {
     },
     {
       key: "actions", label: "", render: (l) => (
-        <button
-          onClick={() => deleteListingAsAdmin(l)}
-          disabled={deletingListingId === l.id}
-          style={{ color: "#b3261e" }}
-          className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
-        >
-          {deletingListingId === l.id ? "Deleting…" : "Delete"}
-        </button>
+        <span className="flex items-center gap-4">
+          <button
+            onClick={() => editListingEmailAsAdmin(l)}
+            disabled={editingEmailId === l.id}
+            style={{ color: C.blue }}
+            className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+          >
+            {editingEmailId === l.id ? "Saving…" : "Edit email"}
+          </button>
+          <button
+            onClick={() => deleteListingAsAdmin(l)}
+            disabled={deletingListingId === l.id}
+            style={{ color: "#b3261e" }}
+            className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+          >
+            {deletingListingId === l.id ? "Deleting…" : "Delete"}
+          </button>
+        </span>
       ),
     },
   ];
