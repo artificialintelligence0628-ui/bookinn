@@ -3254,6 +3254,43 @@ function PlatformAdminView({ token, onManageOwner }) {
       setImpersonatingId(null);
     }
   };
+  // Delete any account (Student, Parent, Owner or Agent) plus its listings.
+  const [deletingUserId, setDeletingUserId] = useState(null);
+  const deleteUserAsAdmin = async ({ id, name, role, listingCount }) => {
+    const listingsNote = listingCount > 0
+      ? `\n\nThis also permanently deletes their ${listingCount} listing${listingCount === 1 ? "" : "s"}, along with the inquiries and reviews on ${listingCount === 1 ? "it" : "them"}.`
+      : "";
+    const ok = window.confirm(
+      `Delete ${role} account "${name}" permanently?${listingsNote}\n\nThis cannot be undone.`
+    );
+    if (!ok) return;
+    setDeletingUserId(id);
+    try {
+      await api.adminDeleteUser(id, token);
+      const removedListingIds = new Set(listings.filter((l) => l.ownerId === id).map((l) => l.id));
+      setUsers((prev) => prev.filter((u) => u.id !== id));
+      setListings((prev) => prev.filter((l) => l.ownerId !== id));
+      setInquiries((prev) => prev.filter((i) => !removedListingIds.has(i.listingId)));
+      api.getAdminStats(token).then(setStats).catch(() => {});
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setDeletingUserId(null);
+    }
+  };
+  const deleteButton = (id, name, role, listingCount) => (
+    <button
+      onClick={() => deleteUserAsAdmin({ id, name, role, listingCount })}
+      disabled={deletingUserId === id}
+      style={{ color: "#b3261e" }}
+      className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+    >
+      {deletingUserId === id ? "Deleting…" : "Delete"}
+    </button>
+  );
+  const personDeleteColumn = {
+    key: "delete", label: "", render: (u) => deleteButton(u.id, u.name, u.role, (listingNamesByOwnerId[u.id] || []).length),
+  };
   const ownerColumns = [
     personColumns[0], // Name
     {
@@ -3276,6 +3313,7 @@ function PlatformAdminView({ token, onManageOwner }) {
         </button>
       ),
     },
+    personDeleteColumn,
   ];
 
   // Agents tab — driven by stats.agentsOverview (listing count + inquiries +
@@ -3359,6 +3397,9 @@ function PlatformAdminView({ token, onManageOwner }) {
           {impersonatingId === a.agentId ? "Opening…" : "Manage listings →"}
         </button>
       ),
+    },
+    {
+      key: "delete", label: "", render: (a) => deleteButton(a.agentId, a.agentName, "Agent", (a.listings || []).length),
     },
   ];
   const agentSummaryStats = [
@@ -3583,10 +3624,10 @@ function PlatformAdminView({ token, onManageOwner }) {
           )}
 
           {tab === "students" && (
-            <DataTable columns={personColumns} rows={byRole("Student")} emptyLabel="No students found." />
+            <DataTable columns={[...personColumns, personDeleteColumn]} rows={byRole("Student")} emptyLabel="No students found." />
           )}
           {tab === "parents" && (
-            <DataTable columns={personColumns} rows={byRole("Parent")} emptyLabel="No parents found." />
+            <DataTable columns={[...personColumns, personDeleteColumn]} rows={byRole("Parent")} emptyLabel="No parents found." />
           )}
          {tab === "owners" && (
             <DataTable columns={ownerColumns} rows={byRole("Owner")} emptyLabel="No property owners found." />
