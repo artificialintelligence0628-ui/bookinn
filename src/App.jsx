@@ -3045,8 +3045,7 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "listings", label: "Listings" },
     { key: "inquiries", label: "Inquiries" },
     { key: "universities", label: "Universities" },
-    { key: "publichostels", label: "Public Hostels" },
-    { key: "publichalls", label: "Public Halls" },
+    { key: "publichostels", label: "Halls/Public Hostels" },
     { key: "emails", label: "Emails" },
   ];
   const [tab, setTab] = useState("overview");
@@ -3056,7 +3055,6 @@ function PlatformAdminView({ token, onManageOwner }) {
   const [inquiries, setInquiries] = useState([]);
   const [listings, setListings] = useState([]);
   const [universities, setUniversities] = useState([]);
-  const [publicHalls, setPublicHalls] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -3068,20 +3066,18 @@ function PlatformAdminView({ token, onManageOwner }) {
     setLoading(true);
     setError("");
     try {
-      const [statsData, usersData, inquiriesData, listingsData, universitiesData, hallsData] = await Promise.all([
+      const [statsData, usersData, inquiriesData, listingsData, universitiesData] = await Promise.all([
         api.getAdminStats(token),
         api.getAdminUsers(token),
         api.getInquiries(token),
         api.getListings(),
         api.getUniversities(),
-        api.getPublicHalls(),
       ]);
       setStats(statsData);
       setUsers(usersData.users);
       setInquiries(inquiriesData.inquiries);
       setListings(listingsData.listings);
       setUniversities(universitiesData.universities || []);
-      setPublicHalls(hallsData.halls || []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -3095,7 +3091,7 @@ function PlatformAdminView({ token, onManageOwner }) {
   }, []);
 
   React.useEffect(() => {
-    if (tab === "overview" || tab === "listings" || tab === "universities" || tab === "publichalls" || tab === "publichostels") loadAll();
+    if (tab === "overview" || tab === "listings" || tab === "universities" || tab === "publichostels") loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, loadAll]);
 
@@ -3179,36 +3175,6 @@ function PlatformAdminView({ token, onManageOwner }) {
       alert(err.message);
     } finally {
       setDeletingListingId(null);
-    }
-  };
-
-  // Public halls & hostels (university-owned) — admin adds/removes per campus.
-  const [hallForm, setHallForm] = useState({ university: "", name: "", kind: "Hall", notes: "" });
-  const [hallBusy, setHallBusy] = useState(false);
-  const [hallError, setHallError] = useState("");
-  const [hallFilter, setHallFilter] = useState("All");
-  const addPublicHall = async () => {
-    const university = hallForm.university || universities[0]?.name || "";
-    if (!university || !hallForm.name.trim()) return;
-    setHallBusy(true);
-    setHallError("");
-    try {
-      const { hall } = await api.addPublicHall({ ...hallForm, university }, token);
-      setPublicHalls((prev) => [...prev, hall].sort((a, b) => a.university.localeCompare(b.university) || a.name.localeCompare(b.name)));
-      setHallForm((f) => ({ ...f, name: "", notes: "" }));
-    } catch (err) {
-      setHallError(err.message);
-    } finally {
-      setHallBusy(false);
-    }
-  };
-  const removePublicHall = async (h) => {
-    if (!window.confirm(`Remove ${h.name} from ${h.university}?`)) return;
-    try {
-      await api.deletePublicHall(h.id, token);
-      setPublicHalls((prev) => prev.filter((x) => x.id !== h.id));
-    } catch (err) {
-      setHallError(err.message);
     }
   };
 
@@ -3589,7 +3555,7 @@ function PlatformAdminView({ token, onManageOwner }) {
             </>
           )}
 
-          {tab !== "overview" && tab !== "emails" && tab !== "universities" && tab !== "publichalls" && tab !== "publichostels" && (
+          {tab !== "overview" && tab !== "emails" && tab !== "universities" && tab !== "publichostels" && (
             <div className="flex flex-wrap items-center gap-3 mb-4">
               <div className="relative sm:max-w-sm w-full sm:w-auto flex-1">
                 <Search size={16} style={{ color: C.gray400 }} className="absolute left-3 top-1/2 -translate-y-1/2" />
@@ -3743,100 +3709,6 @@ function PlatformAdminView({ token, onManageOwner }) {
                 deleteListing={async (id) => { await api.adminDeleteListing(id, token); await refreshListings(); }}
               />
             )
-          )}
-          {tab === "publichalls" && (
-            <div style={{ borderColor: C.border }} className="border rounded-lg bg-white p-4 sm:p-5">
-              <h3 style={{ color: C.ink }} className="font-bold text-sm mb-1">Public halls &amp; hostels</h3>
-              <p style={{ color: C.gray600 }} className="text-xs mb-4">
-                University-owned halls and hostels for each campus. Add the ones students should know about.
-              </p>
-              {universities.length === 0 ? (
-                <p style={{ color: C.gray600 }} className="text-sm">Add a university first (Universities tab).</p>
-              ) : (
-                <div className="grid gap-2 sm:grid-cols-2 mb-2">
-                  <select
-                    aria-label="University"
-                    value={hallForm.university || universities[0].name}
-                    onChange={(e) => setHallForm({ ...hallForm, university: e.target.value })}
-                    style={{ borderColor: C.border, color: C.ink }}
-                    className="border rounded-md px-3 py-2 text-sm bg-white"
-                  >
-                    {universities.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
-                  </select>
-                  <select
-                    aria-label="Type"
-                    value={hallForm.kind}
-                    onChange={(e) => setHallForm({ ...hallForm, kind: e.target.value })}
-                    style={{ borderColor: C.border, color: C.ink }}
-                    className="border rounded-md px-3 py-2 text-sm bg-white"
-                  >
-                    <option value="Hall">Hall</option>
-                    <option value="Hostel">Hostel</option>
-                  </select>
-                  <input
-                    value={hallForm.name}
-                    onChange={(e) => setHallForm({ ...hallForm, name: e.target.value })}
-                    onKeyDown={(e) => e.key === "Enter" && addPublicHall()}
-                    placeholder="Name, e.g. Commonwealth Hall"
-                    style={{ borderColor: C.border }}
-                    className="border rounded-md px-3 py-2 text-sm outline-none"
-                  />
-                  <input
-                    value={hallForm.notes}
-                    onChange={(e) => setHallForm({ ...hallForm, notes: e.target.value })}
-                    onKeyDown={(e) => e.key === "Enter" && addPublicHall()}
-                    placeholder="Note (optional), e.g. Male hall"
-                    maxLength={300}
-                    style={{ borderColor: C.border }}
-                    className="border rounded-md px-3 py-2 text-sm outline-none"
-                  />
-                </div>
-              )}
-              {universities.length > 0 && (
-                <PrimaryButton onClick={addPublicHall} disabled={hallBusy || !hallForm.name.trim()}>
-                  {hallBusy ? "Adding…" : "Add hall / hostel"}
-                </PrimaryButton>
-              )}
-              {hallError && <p style={{ color: "#b3261e" }} className="text-xs mt-3">{hallError}</p>}
-
-              <div className="mt-6">
-                <select
-                  aria-label="Filter by university"
-                  value={hallFilter}
-                  onChange={(e) => setHallFilter(e.target.value)}
-                  style={{ borderColor: C.border, color: C.ink }}
-                  className="border rounded-md px-3 py-2 text-sm bg-white w-full sm:w-auto mb-3"
-                >
-                  <option value="All">All universities</option>
-                  {universities.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
-                </select>
-                {(() => {
-                  const shown = publicHalls.filter((h) => hallFilter === "All" || h.university === hallFilter);
-                  if (!shown.length) return <p style={{ color: C.gray600 }} className="text-sm py-4 text-center">No public halls or hostels added yet.</p>;
-                  const groups = shown.reduce((acc, h) => { (acc[h.university] = acc[h.university] || []).push(h); return acc; }, {});
-                  return Object.entries(groups).map(([uni, items]) => (
-                    <div key={uni} className="mb-4">
-                      <p style={{ color: C.ink }} className="text-xs font-bold mb-1">{uni} <span style={{ color: C.gray600 }} className="font-normal">({items.length})</span></p>
-                      <div className="flex flex-col divide-y" style={{ borderColor: C.border }}>
-                        {items.map((h) => (
-                          <div key={h.id} className="py-2.5 flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p style={{ color: C.ink }} className="text-sm font-medium flex items-center gap-2 flex-wrap">
-                                {h.name} <Badge tone="blue">{h.kind}</Badge>
-                              </p>
-                              {h.notes && <p style={{ color: C.gray600 }} className="text-xs mt-0.5">{h.notes}</p>}
-                            </div>
-                            <button onClick={() => removePublicHall(h)} style={{ color: "#b3261e" }} className="text-xs font-semibold hover:underline whitespace-nowrap shrink-0">
-                              Remove
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  ));
-                })()}
-              </div>
-            </div>
           )}
           {tab === "emails" && <PlatformAdminEmails token={token} />}
         </>
