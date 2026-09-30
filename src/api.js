@@ -65,11 +65,13 @@ export const api = {
   deleteUniversity: (id, token) => request(`/admin/universities/${id}`, { method: "DELETE", token }),
   // Platform admin only (role === "Admin") — site-wide stats and user directory.
   getAdminUsers: (token) => request("/admin/users", { token }),
+  adminUpdateUser: (id, payload, token) => request(`/admin/users/${id}`, { method: "PATCH", body: payload, token }),
   adminDeleteUser: (id, token) => request(`/admin/users/${id}`, { method: "DELETE", token }),
   impersonateUser: (id, token) => request(`/admin/users/${id}/impersonate`, { method: "POST", token }),
   getAdminStats: (token) => request("/admin/stats", { token }),
   adminAddPublicListing: (listing, token) => request("/admin/public-listings", { method: "POST", body: listing, token }),
   adminUpdatePublicListing: (id, listing, token) => request(`/admin/public-listings/${id}`, { method: "PUT", body: listing, token }),
+  adminUpdateListingEmail: (id, ownerEmail, token) => request(`/admin/listings/${id}/email`, { method: "PATCH", body: { ownerEmail }, token }),
   adminDeleteListing: (id, token) => request(`/admin/listings/${id}`, { method: "DELETE", token }),
   getPublicHalls: (university) => request(university ? `/public-halls?university=${encodeURIComponent(university)}` : "/public-halls"),
   addPublicHall: (payload, token) => request("/admin/public-halls", { method: "POST", body: payload, token }),
