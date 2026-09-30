@@ -541,6 +541,9 @@ function ListingCard({ listing, isFav, toggleFav, onOpen }) {
             {listing.featured && (
               <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Featured</span></Badge>
             )}
+            {listing.isPublic && (
+              <Badge tone="purple"><span className="flex items-center gap-1"><Building2 size={12} /> {listing.publicKind === "Hall" ? "Public Hall" : "Public Hostel"}</span></Badge>
+            )}
             {listing.listedByAgent && (
               listing.officialAgent
                 ? <Badge tone="green"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Official BookInn Agent</span></Badge>
@@ -981,7 +984,8 @@ function ReviewForm({ listingId, onSubmitted }) {
             <Badge>{listing.bath}</Badge>
             {listing.kitchen && <Badge tone="green">Shared kitchen</Badge>}
                        {listing.featured && <Badge tone="yellow">Featured listing</Badge>}
-            {listing.listedByAgent && (listing.officialAgent ? <Badge tone="green"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Official BookInn Agent</span></Badge> : <Badge tone="blue"><span className="flex items-center gap-1"><Briefcase size={12} /> Agent listing</span></Badge>)}
+            {listing.isPublic && <Badge tone="purple"><span className="flex items-center gap-1"><Building2 size={12} /> {listing.publicKind === "Hall" ? "Public Hall" : "Public Hostel"}</span></Badge>}
+          {listing.listedByAgent && (listing.officialAgent ? <Badge tone="green"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Official BookInn Agent</span></Badge> : <Badge tone="blue"><span className="flex items-center gap-1"><Briefcase size={12} /> Agent listing</span></Badge>)}
           </div>
 
           <h3 style={{ color: C.ink }} className="font-bold text-base mb-2">About this room</h3>
@@ -1278,9 +1282,11 @@ function NotOwnerNotice({ user, setView }) {
   );
 }
 
-function AdminView({ user, token, listings, maxListings, ownerStats, statsLoading, ownerInquiries, inquiriesLoading, addListing, updateListing, deleteListing, onConfirmResident, universities }) {
+// publicMode: reused by the platform admin's "Public Hostels" tab. Same listing
+// form/table, minus the owner-only parts (stats, inquiries, plan limits, student rosters).
+function AdminView({ user, token, listings, maxListings, ownerStats, statsLoading, ownerInquiries, inquiriesLoading, addListing, updateListing, deleteListing, onConfirmResident, universities, publicMode = false }) {
   const emptyForm = {
-    name: "", university: universities[0] || "", price: "",
+    name: "", university: universities[0] || "", price: "", publicKind: "Hostel",
     type: "Hostel", roomType: HOSTEL_ROOM_TYPES[0], bath: "Shared bath",
     kitchen: false, featured: false, amenities: [], imageData: "", galleryData: [], videoData: "",
     walkthrough: [], uploadingImage: false, uploadingGallery: false, uploadingVideo: false, uploadingWalkthrough: {},
@@ -1467,6 +1473,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
     const existingRooms = Array.isArray(listing.roomOptions) ? listing.roomOptions : [];
     setForm({
       name: listing.name, university: listing.university, price: String(listing.price),
+      publicKind: listing.publicKind === "Hall" ? "Hall" : "Hostel",
       type: listing.type, roomType: existingRooms[0]?.roomType || listing.roomType, bath: listing.bath,
       kitchen: !!listing.kitchen, featured: !!listing.featured, amenities: listing.amenities || [],
       // An actual uploaded photo is a Cloudinary URL (or, for older listings
@@ -1523,7 +1530,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
       );
       return;
     }
-    if (!form.ownerEmail && !form.ownerWhatsapp) {
+    if (!publicMode && !form.ownerEmail && !form.ownerWhatsapp) {
       setSubmitError("Add an email or WhatsApp number so students' booking requests reach you.");
       return;
     }
@@ -1542,7 +1549,8 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
         distance = `${km} km to campus`;
       }
       const payload = {
-        name: form.name, type: form.type, roomOptions, bath: form.bath,
+        name: form.name, type: publicMode ? "Hostel" : form.type, roomOptions, bath: form.bath,
+        ...(publicMode ? { publicKind: form.publicKind } : {}),
         kitchen: form.kitchen, featured: form.featured, university: form.university,
         amenities: form.amenities, pricingPeriod: form.pricingPeriod,
         image: form.imageData || existing?.image || "hostel1",
@@ -1584,9 +1592,13 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
       <div className="flex items-center justify-between flex-wrap gap-3 mb-6">
         <div>
           <h1 style={{ color: C.ink }} className="text-xl sm:text-2xl font-extrabold">
-            {user.role === "Agent" ? "Agent dashboard" : "Owner dashboard"}
+            {publicMode ? "Public hostels & halls" : user.role === "Agent" ? "Agent dashboard" : "Owner dashboard"}
           </h1>
-          <p style={{ color: C.gray600 }} className="text-sm">Manage your listings and track inquiries.</p>
+          <p style={{ color: C.gray600 }} className="text-sm">
+            {publicMode
+              ? "Add public hostels and halls for any university. They appear in search with a \"Public Hostel\" or \"Public Hall\" tag."
+              : "Manage your listings and track inquiries."}
+          </p>
         </div>
         {!atListingLimit && (
           <PrimaryButton
@@ -1600,7 +1612,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
         )}
       </div>
 
-      {hasListing && (
+      {hasListing && !publicMode && (
         <p style={{ color: C.gray600 }} className="text-xs -mt-4 mb-4">
           {isUnlimited
             ? `${listings.length} listing${listings.length === 1 ? "" : "s"} · unlimited plan`
@@ -1608,6 +1620,8 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
         </p>
       )}
 
+      {!publicMode && (
+      <>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2 sm:gap-3 mb-6">
         {stats.map((s) => (
           <div key={s.label} style={{ borderColor: C.border }} className="border rounded-lg p-3 sm:p-4 bg-white min-w-0">
@@ -1665,9 +1679,23 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
         </div>
       </div>
 
+      </>
+      )}
+
       {showForm && (
         <div style={{ borderColor: C.border }} className="border rounded-lg p-4 sm:p-5 bg-white mb-6">
           <h3 style={{ color: C.ink }} className="font-bold text-sm mb-4">{editingId ? "Edit listing" : "New listing details"}</h3>
+
+          {publicMode && (
+            <div className="mb-4">
+              <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Category</p>
+              <select value={form.publicKind} aria-label="Public listing category" onChange={(e) => setForm({ ...form, publicKind: e.target.value })}
+                style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none w-full sm:w-64">
+                <option value="Hostel">Public Hostel</option>
+                <option value="Hall">Public Hall</option>
+              </select>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
             <input placeholder="Property name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
@@ -1749,6 +1777,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
             <p style={{ color: C.gray600 }} className="text-xs mt-1.5">Let students know at a glance whether there's still room, before they reach out.</p>
           </div>
 
+          {!publicMode && (
           <div className="mb-4">
             <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Property type</p>
             <div className="flex gap-2">
@@ -1764,6 +1793,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
               ))}
             </div>
           </div>
+          )}
 
           {form.type === "Hostel" ? (
             <div className="mb-4">
@@ -2023,6 +2053,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
             </div>
 
             <div style={{ borderColor: C.border }} className="border-t mt-3 pt-3 flex items-center gap-2">
+              {!publicMode && (
               <button
                 onClick={() => setRosterListing(l)}
                 style={{ color: C.blue, borderColor: C.border }}
@@ -2030,6 +2061,8 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
               >
                 View students
               </button>
+              )}
+              {publicMode && <span className="flex-1" />}
               <button
                 onClick={() => startEdit(l)}
                 aria-label={`Edit ${l.name}`}
@@ -2061,7 +2094,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                 <th className="py-2.5 px-4 font-semibold">University</th>
                 <th className="py-2.5 px-4 font-semibold">Room categories</th>
                 <th className="py-2.5 px-4 font-semibold">Status</th>
-                <th className="py-2.5 px-4 font-semibold">Students</th>
+                {!publicMode && <th className="py-2.5 px-4 font-semibold">Students</th>}
                 <th className="py-2.5 px-4 font-semibold text-right">Actions</th>
               </tr>
             </thead>
@@ -2087,6 +2120,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                       <p style={{ color: C.yellowDark }} className="text-[11px] mt-1">{l.photosOverLimit} photo{l.photosOverLimit > 1 ? "s" : ""} hidden over plan limit</p>
                     )}
                   </td>
+                  {!publicMode && (
                   <td className="py-2.5 px-4">
                     <button
                       onClick={() => setRosterListing(l)}
@@ -2096,6 +2130,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                       View students
                     </button>
                   </td>
+                  )}
                   <td className="py-2.5 px-4">
                     <div className="flex items-center justify-end gap-3">
                       <button onClick={() => startEdit(l)} title="Edit listing" aria-label={`Edit ${l.name}`}>
@@ -3010,6 +3045,8 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "listings", label: "Listings" },
     { key: "inquiries", label: "Inquiries" },
     { key: "universities", label: "Universities" },
+    { key: "publichostels", label: "Public Hostels" },
+    { key: "publichalls", label: "Public Halls" },
     { key: "emails", label: "Emails" },
   ];
   const [tab, setTab] = useState("overview");
@@ -3019,6 +3056,7 @@ function PlatformAdminView({ token, onManageOwner }) {
   const [inquiries, setInquiries] = useState([]);
   const [listings, setListings] = useState([]);
   const [universities, setUniversities] = useState([]);
+  const [publicHalls, setPublicHalls] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
@@ -3030,18 +3068,20 @@ function PlatformAdminView({ token, onManageOwner }) {
     setLoading(true);
     setError("");
     try {
-      const [statsData, usersData, inquiriesData, listingsData, universitiesData] = await Promise.all([
+      const [statsData, usersData, inquiriesData, listingsData, universitiesData, hallsData] = await Promise.all([
         api.getAdminStats(token),
         api.getAdminUsers(token),
         api.getInquiries(token),
         api.getListings(),
         api.getUniversities(),
+        api.getPublicHalls(),
       ]);
       setStats(statsData);
       setUsers(usersData.users);
       setInquiries(inquiriesData.inquiries);
       setListings(listingsData.listings);
       setUniversities(universitiesData.universities || []);
+      setPublicHalls(hallsData.halls || []);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -3049,8 +3089,13 @@ function PlatformAdminView({ token, onManageOwner }) {
     }
   }, [token]);
 
+  const refreshListings = React.useCallback(async () => {
+    const data = await api.getListings();
+    setListings(data.listings);
+  }, []);
+
   React.useEffect(() => {
-    if (tab === "overview" || tab === "listings" || tab === "universities") loadAll();
+    if (tab === "overview" || tab === "listings" || tab === "universities" || tab === "publichalls" || tab === "publichostels") loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tab, loadAll]);
 
@@ -3115,6 +3160,55 @@ function PlatformAdminView({ token, onManageOwner }) {
       setUniversityError(err.message);
     } finally {
       setRenameBusy(false);
+    }
+  };
+
+  // Admin can delete any listing (owner or agent). Inquiries on it go with it.
+  const [deletingListingId, setDeletingListingId] = useState(null);
+  const deleteListingAsAdmin = async (l) => {
+    const ok = window.confirm(
+      `Delete "${l.name}" permanently?\n\nThis also removes its inquiries and reviews, and cannot be undone.`
+    );
+    if (!ok) return;
+    setDeletingListingId(l.id);
+    try {
+      await api.adminDeleteListing(l.id, token);
+      setListings((prev) => prev.filter((x) => x.id !== l.id));
+      setInquiries((prev) => prev.filter((i) => i.listingId !== l.id));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setDeletingListingId(null);
+    }
+  };
+
+  // Public halls & hostels (university-owned) — admin adds/removes per campus.
+  const [hallForm, setHallForm] = useState({ university: "", name: "", kind: "Hall", notes: "" });
+  const [hallBusy, setHallBusy] = useState(false);
+  const [hallError, setHallError] = useState("");
+  const [hallFilter, setHallFilter] = useState("All");
+  const addPublicHall = async () => {
+    const university = hallForm.university || universities[0]?.name || "";
+    if (!university || !hallForm.name.trim()) return;
+    setHallBusy(true);
+    setHallError("");
+    try {
+      const { hall } = await api.addPublicHall({ ...hallForm, university }, token);
+      setPublicHalls((prev) => [...prev, hall].sort((a, b) => a.university.localeCompare(b.university) || a.name.localeCompare(b.name)));
+      setHallForm((f) => ({ ...f, name: "", notes: "" }));
+    } catch (err) {
+      setHallError(err.message);
+    } finally {
+      setHallBusy(false);
+    }
+  };
+  const removePublicHall = async (h) => {
+    if (!window.confirm(`Remove ${h.name} from ${h.university}?`)) return;
+    try {
+      await api.deletePublicHall(h.id, token);
+      setPublicHalls((prev) => prev.filter((x) => x.id !== h.id));
+    } catch (err) {
+      setHallError(err.message);
     }
   };
 
@@ -3317,7 +3411,9 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "type", label: "Type" },
     {
       key: "listedBy", label: "Listed by", render: (l) => (
-        l.officialAgent
+        l.isPublic
+          ? <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#5b2ea6" }}><Building2 size={13} /> {l.publicKind === "Hall" ? "Public Hall" : "Public Hostel"}</span>
+          : l.officialAgent
           ? <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#0a6b0f" }}><BadgeCheck size={13} /> Official BookInn Agent</span>
           : l.listedByAgent
           ? <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#7c3aed" }}><Briefcase size={13} /> Agent</span>
@@ -3335,6 +3431,18 @@ function PlatformAdminView({ token, onManageOwner }) {
           className="text-xs font-semibold hover:underline whitespace-nowrap"
         >
           View students
+        </button>
+      ),
+    },
+    {
+      key: "actions", label: "", render: (l) => (
+        <button
+          onClick={() => deleteListingAsAdmin(l)}
+          disabled={deletingListingId === l.id}
+          style={{ color: "#b3261e" }}
+          className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+        >
+          {deletingListingId === l.id ? "Deleting…" : "Delete"}
         </button>
       ),
     },
@@ -3481,7 +3589,7 @@ function PlatformAdminView({ token, onManageOwner }) {
             </>
           )}
 
-          {tab !== "overview" && tab !== "emails" && tab !== "universities" && (
+          {tab !== "overview" && tab !== "emails" && tab !== "universities" && tab !== "publichalls" && tab !== "publichostels" && (
             <div className="flex flex-wrap items-center gap-3 mb-4">
               <div className="relative sm:max-w-sm w-full sm:w-auto flex-1">
                 <Search size={16} style={{ color: C.gray400 }} className="absolute left-3 top-1/2 -translate-y-1/2" />
@@ -3611,6 +3719,122 @@ function PlatformAdminView({ token, onManageOwner }) {
                     )}
                   </div>
                 ))}
+              </div>
+            </div>
+          )}
+          {tab === "publichostels" && (
+            loading && listings.length === 0 ? (
+              <p style={{ color: C.gray600 }} className="text-sm py-10 text-center">Loading…</p>
+            ) : (
+              <AdminView
+                publicMode
+                user={{ role: "Admin" }}
+                token={token}
+                listings={listings.filter((l) => l.isPublic)}
+                maxListings={null}
+                ownerStats={null}
+                statsLoading={false}
+                ownerInquiries={[]}
+                inquiriesLoading={false}
+                onConfirmResident={() => {}}
+                universities={universities.map((u) => u.name)}
+                addListing={async (payload) => { await api.adminAddPublicListing(payload, token); await refreshListings(); }}
+                updateListing={async (id, payload) => { await api.adminUpdatePublicListing(id, payload, token); await refreshListings(); }}
+                deleteListing={async (id) => { await api.adminDeleteListing(id, token); await refreshListings(); }}
+              />
+            )
+          )}
+          {tab === "publichalls" && (
+            <div style={{ borderColor: C.border }} className="border rounded-lg bg-white p-4 sm:p-5">
+              <h3 style={{ color: C.ink }} className="font-bold text-sm mb-1">Public halls &amp; hostels</h3>
+              <p style={{ color: C.gray600 }} className="text-xs mb-4">
+                University-owned halls and hostels for each campus. Add the ones students should know about.
+              </p>
+              {universities.length === 0 ? (
+                <p style={{ color: C.gray600 }} className="text-sm">Add a university first (Universities tab).</p>
+              ) : (
+                <div className="grid gap-2 sm:grid-cols-2 mb-2">
+                  <select
+                    aria-label="University"
+                    value={hallForm.university || universities[0].name}
+                    onChange={(e) => setHallForm({ ...hallForm, university: e.target.value })}
+                    style={{ borderColor: C.border, color: C.ink }}
+                    className="border rounded-md px-3 py-2 text-sm bg-white"
+                  >
+                    {universities.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                  </select>
+                  <select
+                    aria-label="Type"
+                    value={hallForm.kind}
+                    onChange={(e) => setHallForm({ ...hallForm, kind: e.target.value })}
+                    style={{ borderColor: C.border, color: C.ink }}
+                    className="border rounded-md px-3 py-2 text-sm bg-white"
+                  >
+                    <option value="Hall">Hall</option>
+                    <option value="Hostel">Hostel</option>
+                  </select>
+                  <input
+                    value={hallForm.name}
+                    onChange={(e) => setHallForm({ ...hallForm, name: e.target.value })}
+                    onKeyDown={(e) => e.key === "Enter" && addPublicHall()}
+                    placeholder="Name, e.g. Commonwealth Hall"
+                    style={{ borderColor: C.border }}
+                    className="border rounded-md px-3 py-2 text-sm outline-none"
+                  />
+                  <input
+                    value={hallForm.notes}
+                    onChange={(e) => setHallForm({ ...hallForm, notes: e.target.value })}
+                    onKeyDown={(e) => e.key === "Enter" && addPublicHall()}
+                    placeholder="Note (optional), e.g. Male hall"
+                    maxLength={300}
+                    style={{ borderColor: C.border }}
+                    className="border rounded-md px-3 py-2 text-sm outline-none"
+                  />
+                </div>
+              )}
+              {universities.length > 0 && (
+                <PrimaryButton onClick={addPublicHall} disabled={hallBusy || !hallForm.name.trim()}>
+                  {hallBusy ? "Adding…" : "Add hall / hostel"}
+                </PrimaryButton>
+              )}
+              {hallError && <p style={{ color: "#b3261e" }} className="text-xs mt-3">{hallError}</p>}
+
+              <div className="mt-6">
+                <select
+                  aria-label="Filter by university"
+                  value={hallFilter}
+                  onChange={(e) => setHallFilter(e.target.value)}
+                  style={{ borderColor: C.border, color: C.ink }}
+                  className="border rounded-md px-3 py-2 text-sm bg-white w-full sm:w-auto mb-3"
+                >
+                  <option value="All">All universities</option>
+                  {universities.map((u) => <option key={u.id} value={u.name}>{u.name}</option>)}
+                </select>
+                {(() => {
+                  const shown = publicHalls.filter((h) => hallFilter === "All" || h.university === hallFilter);
+                  if (!shown.length) return <p style={{ color: C.gray600 }} className="text-sm py-4 text-center">No public halls or hostels added yet.</p>;
+                  const groups = shown.reduce((acc, h) => { (acc[h.university] = acc[h.university] || []).push(h); return acc; }, {});
+                  return Object.entries(groups).map(([uni, items]) => (
+                    <div key={uni} className="mb-4">
+                      <p style={{ color: C.ink }} className="text-xs font-bold mb-1">{uni} <span style={{ color: C.gray600 }} className="font-normal">({items.length})</span></p>
+                      <div className="flex flex-col divide-y" style={{ borderColor: C.border }}>
+                        {items.map((h) => (
+                          <div key={h.id} className="py-2.5 flex items-start justify-between gap-3">
+                            <div className="min-w-0">
+                              <p style={{ color: C.ink }} className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                                {h.name} <Badge tone="blue">{h.kind}</Badge>
+                              </p>
+                              {h.notes && <p style={{ color: C.gray600 }} className="text-xs mt-0.5">{h.notes}</p>}
+                            </div>
+                            <button onClick={() => removePublicHall(h)} style={{ color: "#b3261e" }} className="text-xs font-semibold hover:underline whitespace-nowrap shrink-0">
+                              Remove
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
             </div>
           )}
