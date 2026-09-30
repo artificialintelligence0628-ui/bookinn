@@ -201,6 +201,29 @@ export const store = {
     const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [id]);
     return mapUser(rows[0]);
   },
+  // Permanently removes an account. Its listings are removed by the
+  // listings.owner_id ON DELETE CASCADE foreign key, and each listing's
+  // inquiries go with it (inquiries.listing_id ON DELETE CASCADE). Email
+  // campaign/template/recipient rows that point at the user are set to NULL
+  // so sent-email history survives. Returns how many listings were removed,
+  // or null if the user doesn't exist.
+  async deleteUser(id) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      const { rows: countRows } = await client.query(
+        "SELECT COUNT(*)::int AS n FROM listings WHERE owner_id = $1", [id]
+      );
+      const { rowCount } = await client.query("DELETE FROM users WHERE id = $1", [id]);
+      await client.query("COMMIT");
+      return rowCount > 0 ? { listingsDeleted: countRows[0].n } : null;
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
   async addUser({ name, email, passwordHash, role, university }) {
     const { rows } = await pool.query(
       `INSERT INTO users (name, email, password_hash, role, subscription, has_used_free_trial, university)
