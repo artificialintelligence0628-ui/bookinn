@@ -3346,8 +3346,11 @@ function PlatformAdminView({ token, onManageOwner }) {
       {deletingUserId === id ? "Deleting…" : "Delete"}
     </button>
   );
+  // Edit + Delete buttons for one account. Returned as a fragment so each table
+  // can lay them out: a simple row for students/parents, a tidy vertical list
+  // (alongside "Manage listings") for owners and agents.
   const accountActions = (id, name, role, email, listingCount) => (
-    <span className="flex items-center gap-4">
+    <>
       <button
         onClick={() => openEditUser({ id, name, role, email })}
         style={{ color: C.blue }}
@@ -3356,10 +3359,28 @@ function PlatformAdminView({ token, onManageOwner }) {
         Edit account
       </button>
       {deleteButton(id, name, role, listingCount)}
-    </span>
+    </>
+  );
+  // Stacked one-per-line on desktop, wrapping in a row inside the phone card footer.
+  const actionsWrap = (children) => (
+    <span className="flex flex-row flex-wrap items-center gap-x-4 gap-y-1.5 md:flex-col md:items-start">{children}</span>
+  );
+  const manageButton = (id) => (
+    <button
+      onClick={() => handleManageOwner(id)}
+      disabled={impersonatingId === id}
+      style={{ color: C.blue }}
+      className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+    >
+      {impersonatingId === id ? "Opening…" : "Manage listings →"}
+    </button>
   );
   const personDeleteColumn = {
-    key: "delete", label: "", render: (u) => accountActions(u.id, u.name, u.role, u.email, (listingNamesByOwnerId[u.id] || []).length),
+    key: "delete", label: "", headerLabel: "Actions", render: (u) => (
+      <span className="flex items-center gap-4">
+        {accountActions(u.id, u.name, u.role, u.email, (listingNamesByOwnerId[u.id] || []).length)}
+      </span>
+    ),
   };
   const ownerColumns = [
     personColumns[0], // Name
@@ -3372,18 +3393,11 @@ function PlatformAdminView({ token, onManageOwner }) {
     },
     ...personColumns.slice(1), // Email, Role, Joined
     {
-      key: "manage", label: "", render: (u) => (
-        <span className="flex items-center gap-4">
-          <button
-            onClick={() => handleManageOwner(u.id)}
-            disabled={impersonatingId === u.id}
-            style={{ color: C.blue }}
-            className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
-          >
-            {impersonatingId === u.id ? "Opening…" : "Manage listings →"}
-          </button>
+      key: "manage", label: "", headerLabel: "Actions", render: (u) => actionsWrap(
+        <>
+          {manageButton(u.id)}
           {accountActions(u.id, u.name, u.role, u.email, (listingNamesByOwnerId[u.id] || []).length)}
-        </span>
+        </>
       ),
     },
   ];
@@ -3426,39 +3440,15 @@ function PlatformAdminView({ token, onManageOwner }) {
   const agentColumns = [
     {
       key: "agentName", label: "Name", render: (a) => (
-        <span className="flex items-center gap-2 flex-wrap">
-          {a.agentName}
-          {a.officialAgent && (
-            <Badge tone="green"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Official</span></Badge>
-          )}
-        </span>
-      ),
-    },
-    {
-      key: "manage", label: "Actions", render: (a) => (
-        <span className="flex flex-col items-start gap-1.5">
-          <button
-            onClick={() => handleManageOwner(a.agentId)}
-            disabled={impersonatingId === a.agentId}
-            style={{ color: C.blue }}
-            className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
-          >
-            {impersonatingId === a.agentId ? "Opening…" : "Manage listings →"}
-          </button>
-          {accountActions(a.agentId, a.agentName, "Agent", a.agentEmail, (a.listings || []).length)}
-        </span>
-      ),
-    },
-    {
-      key: "official", label: "Official BookInn Agent", render: (a) => (
-        <button
-          onClick={() => toggleOfficialAgent(a)}
-          disabled={officialBusyId === a.agentId}
-          style={{ color: a.officialAgent ? "#b3261e" : C.blue }}
-          className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
-        >
-          {officialBusyId === a.agentId ? "Saving…" : a.officialAgent ? "Remove official status" : "Make official"}
-        </button>
+        <div className="min-w-0">
+          <span className="flex items-center gap-2 flex-wrap">
+            {a.agentName}
+            {a.officialAgent && (
+              <Badge tone="green"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Official</span></Badge>
+            )}
+          </span>
+          <span style={{ color: C.gray600 }} className="block text-xs font-normal mt-0.5 break-all">{a.agentEmail}</span>
+        </div>
       ),
     },
     {
@@ -3468,11 +3458,26 @@ function PlatformAdminView({ token, onManageOwner }) {
         return <PropertyNameList names={names} />;
       },
     },
-    { key: "agentEmail", label: "Email" },
     { key: "listingsCount", label: "Listings" },
     { key: "totalInquiries", label: "Inquiries" },
-    { key: "totalViews", label: "Profile views" },
+    { key: "totalViews", label: "Views" },
     { key: "createdAt", label: "Joined", render: (a) => a.createdAt ? new Date(a.createdAt).toLocaleDateString() : "—" },
+    {
+      key: "manage", label: "", headerLabel: "Actions", render: (a) => actionsWrap(
+        <>
+          {manageButton(a.agentId)}
+          <button
+            onClick={() => toggleOfficialAgent(a)}
+            disabled={officialBusyId === a.agentId}
+            style={{ color: a.officialAgent ? "#b3261e" : C.blue }}
+            className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+          >
+            {officialBusyId === a.agentId ? "Saving…" : a.officialAgent ? "Remove official status" : "Make official"}
+          </button>
+          {accountActions(a.agentId, a.agentName, "Agent", a.agentEmail, (a.listings || []).length)}
+        </>
+      ),
+    },
   ];
   const agentSummaryStats = [
     { label: "Total agents", value: agentsOverview.length, icon: Briefcase },
