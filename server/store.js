@@ -54,6 +54,8 @@ function mapListing(row) {
     reviews: row.reviews,
     views: row.views,
     createdAt: row.created_at,
+    isPublic: !!row.is_public,
+    publicKind: row.is_public ? (row.public_kind === "Hall" ? "Hall" : "Hostel") : null,
   };
 }
 
@@ -73,6 +75,11 @@ function mapInquiry(row) {
   };
 }
 
+function mapPublicHall(row) {
+  if (!row) return null;
+  return { id: row.id, name: row.name, university: row.university, kind: row.kind, notes: row.notes || "", createdAt: row.created_at };
+}
+
 function mapUniversity(row) {
   if (!row) return null;
   return { id: row.id, name: row.name, createdAt: row.created_at };
@@ -86,7 +93,7 @@ const LISTING_COLUMNS = {
   images: "images", video: "video", walkthrough: "walkthrough",
   amenities: "amenities", desc: '"desc"', locationDescription: "location_description",
   ownerEmail: "owner_email", ownerWhatsapp: "owner_whatsapp",
-  availability: "availability", reviews: "reviews", views: "views",
+  availability: "availability", reviews: "reviews", views: "views", publicKind: "public_kind",
 };
 const JSONB_LISTING_FIELDS = new Set(["roomOptions", "images", "walkthrough", "amenities", "reviews", "views"]);
 
@@ -115,8 +122,8 @@ export const store = {
         (owner_id, name, type, room_options, room_type, price, bath, kitchen, university,
          distance, pricing_period, rating, review_count, featured, image, images, video,
         walkthrough, amenities, "desc", location_description, owner_email, owner_whatsapp,
-         availability, reviews, views)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26)
+         availability, reviews, views, is_public, public_kind)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
        RETURNING *`,
       [
         listing.ownerId, listing.name, listing.type,
@@ -128,7 +135,7 @@ export const store = {
         JSON.stringify(listing.amenities || []), listing.desc || "",
         listing.locationDescription || "", listing.ownerEmail || "",
         listing.ownerWhatsapp || "", listing.availability, JSON.stringify(listing.reviews || []),
-        JSON.stringify([]),
+        JSON.stringify([]), !!listing.isPublic, listing.isPublic ? (listing.publicKind === "Hall" ? "Hall" : "Hostel") : null,
       ]
     );
     return mapListing(rows[0]);
@@ -325,6 +332,26 @@ async getInquiries() {
       [confirmed, id]
     );
     return mapInquiry(rows[0]);
+  },
+
+  // ---- public halls & hostels ----
+  async getPublicHalls(university) {
+    const { rows } = university
+      ? await pool.query("SELECT * FROM public_halls WHERE university = $1 ORDER BY name ASC", [university])
+      : await pool.query("SELECT * FROM public_halls ORDER BY university ASC, name ASC");
+    return rows.map(mapPublicHall);
+  },
+  async addPublicHall({ name, university, kind, notes }) {
+    const { rows } = await pool.query(
+      `INSERT INTO public_halls (name, university, kind, notes) VALUES ($1, $2, $3, $4)
+       ON CONFLICT DO NOTHING RETURNING *`,
+      [name, university, kind, notes || ""]
+    );
+    return mapPublicHall(rows[0]);
+  },
+  async deletePublicHall(id) {
+    const { rowCount } = await pool.query("DELETE FROM public_halls WHERE id = $1", [id]);
+    return rowCount > 0;
   },
 
   // ---- universities ----
