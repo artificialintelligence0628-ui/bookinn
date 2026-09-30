@@ -519,6 +519,18 @@ function FilterSidebar({ filters, setFilters, resultCount, universities, showUni
 /* ---------------------------------------------------------
    LISTING CARD
 --------------------------------------------------------- */
+// The "New listing" placeholder (saved when an owner/agent leaves the travel
+// time/distance blank) only shows for the first 7 days after a listing is
+// created, then disappears. A real distance ("5 min walk to campus") always shows.
+const NEW_LISTING_DAYS = 7;
+function distanceLabel(listing) {
+  const d = (listing?.distance || "").trim();
+  if (d && d !== "New listing") return d;
+  if (!listing?.createdAt) return d;
+  const ageMs = Date.now() - new Date(listing.createdAt).getTime();
+  return ageMs < NEW_LISTING_DAYS * 24 * 60 * 60 * 1000 ? "New listing" : "";
+}
+
 function ListingCard({ listing, isFav, toggleFav, onOpen }) {
   return (
     <div style={{ borderColor: C.border }} className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition flex flex-col sm:flex-row">
@@ -551,7 +563,7 @@ function ListingCard({ listing, isFav, toggleFav, onOpen }) {
             <button onClick={() => onOpen(listing)} style={{ color: C.blue }} className="text-left font-bold text-base hover:underline">
               {listing.name}
             </button>
-            <p style={{ color: C.gray600 }} className="text-xs mt-1 flex items-center gap-1"><MapPin size={12} /> {listing.university} · {listing.distance}</p>
+            <p style={{ color: C.gray600 }} className="text-xs mt-1 flex items-center gap-1"><MapPin size={12} /> {listing.university}{distanceLabel(listing) && ` · ${distanceLabel(listing)}`}</p>
           </div>
           <ScoreBadge score={listing.rating} size="sm" />
         </div>
@@ -931,7 +943,7 @@ function ReviewForm({ listingId, onSubmitted }) {
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div>
           <h1 style={{ color: C.ink }} className="text-2xl font-extrabold">{listing.name}</h1>
-          <p style={{ color: C.gray600 }} className="text-sm mt-1 flex items-center gap-1"><MapPin size={14} /> {listing.university} · {listing.distance}</p>
+          <p style={{ color: C.gray600 }} className="text-sm mt-1 flex items-center gap-1"><MapPin size={14} /> {listing.university}{distanceLabel(listing) && ` · ${distanceLabel(listing)}`}</p>
         </div>
         <div className="flex items-center gap-3">
           <ScoreBadge score={listing.rating} />
@@ -1115,7 +1127,7 @@ function ReviewForm({ listingId, onSubmitted }) {
           <div className="flex flex-col gap-2.5 mb-4 text-sm" style={{ color: C.gray600 }}>
             <div className="flex items-center gap-2"><BedDouble size={15} /> {selectedRoom}</div>
             <div className="flex items-center gap-2"><Bath size={15} /> {listing.bath}</div>
-            <div className="flex items-center gap-2"><MapPin size={15} /> {listing.distance}</div>
+            {distanceLabel(listing) && <div className="flex items-center gap-2"><MapPin size={15} /> {distanceLabel(listing)}</div>}
           </div>
 
          <PrimaryButton
