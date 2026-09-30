@@ -543,7 +543,11 @@ function enforcePlanOnListingPayload(view, l) {
 // higher plan), and attaches search-ranking/badge info. Returns null when the
 // listing should not be shown publicly at all.
 function toPublicListing(listing, owner) {
-  const view = owner ? computeSubscriptionView(owner) : { isListingVisible: false, features: {}, effectivePlan: null };
+  // Admin-managed public hostels are always visible with full features — they
+  // don't depend on any owner subscription.
+  const view = listing.isPublic
+    ? { isListingVisible: true, features: FULL_FEATURES, effectivePlan: "Public" }
+    : owner ? computeSubscriptionView(owner) : { isListingVisible: false, features: {}, effectivePlan: null };
   if (!view.isListingVisible) return null;
   const { features, effectivePlan } = view;
   const cap = features.maxPhotos ?? 0;
@@ -563,9 +567,10 @@ function toPublicListing(listing, owner) {
     // Lets the frontend show an "Agent listing" badge — students should know
     // when they're dealing with a listing agent rather than the landlord
     // directly.
-    listedByAgent: owner?.role === "Agent",
+    listedByAgent: !listing.isPublic && owner?.role === "Agent",
+    isPublic: !!listing.isPublic,
     // Only true for agents a platform admin has marked as Official BookInn Agents.
-    officialAgent: owner?.role === "Agent" && !!owner?.officialAgent,
+    officialAgent: !listing.isPublic && owner?.role === "Agent" && !!owner?.officialAgent,
   };
 }
 
@@ -598,7 +603,7 @@ app.get("/api/listings", ah(async (req, res) => {
     visibleListingIdsForOwner(owner, ownerListings).forEach((id) => visibleIds.add(id));
   });
   let listings = all
-    .filter((l) => visibleIds.has(l.id))
+    .filter((l) => l.isPublic || visibleIds.has(l.id))
     .map((l) => toPublicListing(l, ownerById.get(l.ownerId)))
     .filter(Boolean)
     .sort((a, b) => b.searchPriority - a.searchPriority);
@@ -958,6 +963,115 @@ app.post("/api/admin/users/:id/impersonate", requireAuth, requireAdmin, ah(async
   const token = signToken(targetUser);
   res.json({ token, user: publicUser(targetUser) });
 }));
+// ---- Public hostels (admin-managed listings) -------------------------------
+// Same shape as an owner listing, but created by a platform admin, flagged
+// is_public, exempt from subscription/plan limits, and only editable by admins.
+// Deleting one uses the normal DELETE /api/admin/listings/:id route below.
+function buildPublicListingFields(l) {
+  const type = "Hostel"; // halls and hostels both use hostel room categories
+  if (!l.name || !String(l.name).trim()) return { error: "Listing name is required." };
+  const rooms = normalizeRoomOptions(type, l.roomOptions, true);
+  if (!rooms) {
+    return {
+      error: type === "Hostel"
+        ? "Choose at least one room category (e.g. Two in a room) and set a price for it."
+        : "Choose a room type and set a price.",
+    };
+  }
+  const planCheck = enforcePlanOnListingPayload({ features: FULL_FEATURES }, l);
+  if (planCheck.error) return { error: planCheck.error };
+  return {
+    fields: {
+      name: String(l.name).trim(),
+      type,
+      publicKind: l.publicKind === "Hall" ? "Hall" : "Hostel",
+      roomOptions: rooms.roomOptions,
+      roomType: rooms.roomType,
+      price: rooms.price,
+      bath: l.bath || "Shared bath",
+      kitchen: !!l.kitchen,
+      university: l.university || DEFAULT_UNIVERSITY,
+      distance: l.distance || "New listing",
+      pricingPeriod: l.pricingPeriod || "Per semester",
+      featured: planCheck.featured,
+      image: l.image || "hostel1",
+      images: planCheck.images,
+      video: planCheck.video,
+      walkthrough: planCheck.walkthrough,
+      amenities: l.amenities || [],
+      desc: l.desc || "",
+      locationDescription: l.locationDescription || "",
+      // Contact details are optional for public hostels.
+      ownerEmail: l.ownerEmail || "",
+      ownerWhatsapp: l.ownerWhatsapp || "",
+      availability: ["Space available", "Partly booked", "Fully booked"].includes(l.availability) ? l.availability : "Space available",
+    },
+  };
+}
+
+app.post("/api/admin/public-listings", requireAuth, requireAdmin, ah(async (req, res) => {
+  const { fields, error } = buildPublicListingFields(req.body || {});
+  if (error) return res.status(400).json({ error });
+  const universities = await store.getUniversities();
+  if (!universities.some((u) => u.name === fields.university)) return res.status(400).json({ error: "Choose a valid university." });
+  const listing = await store.addListing({
+    ...fields,
+    ownerId: req.user.sub, // the admin account owns it (owner_id can't be null)
+    rating: 0,
+    reviewCount: 0,
+    reviews: [],
+    isPublic: true,
+  });
+  res.status(201).json({ listing });
+}));
+
+app.put("/api/admin/public-listings/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const existing = (await store.getListings()).find((l) => l.id === id);
+  if (!existing) return res.status(404).json({ error: "Listing not found." });
+  if (!existing.isPublic) return res.status(400).json({ error: "That is not a public hostel listing." });
+  const { fields, error } = buildPublicListingFields(req.body || {});
+  if (error) return res.status(400).json({ error });
+  const universities = await store.getUniversities();
+  if (!universities.some((u) => u.name === fields.university)) return res.status(400).json({ error: "Choose a valid university." });
+  const updated = await store.updateListing(id, fields);
+  if (!updated) return res.status(404).json({ error: "Listing not found." });
+  res.json({ listing: updated });
+}));
+
+// Admin can remove ANY listing (owner or agent). Related inquiries/reviews are
+// removed with it by the database cascade.
+app.delete("/api/admin/listings/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const ok = await store.deleteListing(Number(req.params.id));
+  if (!ok) return res.status(404).json({ error: "Listing not found." });
+  res.status(204).end();
+}));
+
+// Public halls & hostels (university-owned). Anyone can read; only admin writes.
+app.get("/api/public-halls", ah(async (req, res) => {
+  const university = (req.query.university || "").toString().trim();
+  res.json({ halls: await store.getPublicHalls(university || undefined) });
+}));
+
+app.post("/api/admin/public-halls", requireAuth, requireAdmin, ah(async (req, res) => {
+  const name = (req.body?.name || "").trim();
+  const university = (req.body?.university || "").trim();
+  const kind = ["Hall", "Hostel"].includes(req.body?.kind) ? req.body.kind : "Hall";
+  const notes = (req.body?.notes || "").toString().trim().slice(0, 300);
+  if (!name) return res.status(400).json({ error: "Name is required." });
+  const universities = await store.getUniversities();
+  if (!universities.some((u) => u.name === university)) return res.status(400).json({ error: "Choose a valid university." });
+  const hall = await store.addPublicHall({ name, university, kind, notes });
+  if (!hall) return res.status(409).json({ error: "That hall/hostel is already added for this university." });
+  res.status(201).json({ hall });
+}));
+
+app.delete("/api/admin/public-halls/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const ok = await store.deletePublicHall(Number(req.params.id));
+  if (!ok) return res.status(404).json({ error: "Not found." });
+  res.status(204).end();
+}));
+
 // Marks / unmarks an Agent account as an Official BookInn Agent. Admin only, and
 // only Agent accounts can be flagged (Owners/Students/etc. are rejected).
 app.patch("/api/admin/agents/:id/official", requireAuth, requireAdmin, ah(async (req, res) => {
