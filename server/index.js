@@ -149,16 +149,29 @@ function publicUser(user) {
   };
 }
 
-function requireAuth(req, res, next) {
+async function requireAuth(req, res, next) {
   const header = req.headers.authorization || "";
   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: "Missing auth token." });
+  let payload;
   try {
-    req.user = jwt.verify(token, JWT_SECRET);
-    next();
+    payload = jwt.verify(token, JWT_SECRET);
   } catch {
     return res.status(401).json({ error: "Invalid or expired token." });
   }
+  try {
+    // Reject tokens for deleted accounts, and tokens issued before an admin
+    // changed that account's password (iat is in whole seconds).
+    const state = await store.getAuthState(payload.sub);
+    if (!state) return res.status(401).json({ error: "This account no longer exists." });
+    if (state.passwordChangedAt && Math.floor(new Date(state.passwordChangedAt).getTime() / 1000) > payload.iat) {
+      return res.status(401).json({ error: "Your password was changed. Please sign in again." });
+    }
+  } catch (err) {
+    return next(err);
+  }
+  req.user = payload;
+  next();
 }
 
 // Property owners must have a currently-visible subscription (active paid plan or
@@ -963,6 +976,52 @@ app.post("/api/admin/users/:id/impersonate", requireAuth, requireAdmin, ah(async
   const token = signToken(targetUser);
   res.json({ token, user: publicUser(targetUser) });
 }));
+// Lets a platform admin change a non-admin account's login email and/or
+// password (Owner, Student, Parent or Agent). The password is hashed here and
+// never stored or returned in plain text. Changing it signs the person out of
+// any session already open. Changing the email only affects the login/account
+// email — the contact email on each of their listings is edited separately.
+app.patch("/api/admin/users/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid user id." });
+  const target = await store.getUserById(id);
+  if (!target) return res.status(404).json({ error: "User not found." });
+  if (target.role === ADMIN_ROLE) return res.status(400).json({ error: "Admin accounts can't be edited here." });
+
+  const body = req.body || {};
+  const changes = {};
+
+  if (body.email !== undefined) {
+    const email = String(body.email).trim();
+    if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      return res.status(400).json({ error: "Enter a valid email address." });
+    }
+    if (email.toLowerCase() !== target.email.toLowerCase()) {
+      const taken = await store.getUserByEmail(email);
+      if (taken && taken.id !== id) return res.status(409).json({ error: "Another account already uses that email." });
+    }
+    if (email !== target.email) changes.email = email;
+  }
+
+  if (body.password !== undefined && body.password !== "") {
+    const password = String(body.password);
+    if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
+    if (password.length > 72) return res.status(400).json({ error: "Password can be at most 72 characters." });
+    changes.passwordHash = await bcrypt.hash(password, 10);
+  }
+
+  if (!Object.keys(changes).length) return res.status(400).json({ error: "Enter a new email or a new password." });
+
+  let updated;
+  try {
+    updated = await store.adminUpdateUser(id, changes);
+  } catch (err) {
+    if (err && err.code === "23505") return res.status(409).json({ error: "Another account already uses that email." });
+    throw err;
+  }
+  res.json({ user: publicUser(updated), emailChanged: "email" in changes, passwordChanged: "passwordHash" in changes });
+}));
+
 // Permanently deletes any non-admin account (Owner, Student, Parent or Agent)
 // together with everything it owns: listings and, through them, inquiries and
 // reviews (database cascade). Admin accounts can't be deleted here, and an
@@ -1051,6 +1110,26 @@ app.put("/api/admin/public-listings/:id", requireAuth, requireAdmin, ah(async (r
   const universities = await store.getUniversities();
   if (!universities.some((u) => u.name === fields.university)) return res.status(400).json({ error: "Choose a valid university." });
   const updated = await store.updateListing(id, fields);
+  if (!updated) return res.status(404).json({ error: "Listing not found." });
+  res.json({ listing: updated });
+}));
+
+// Admin can change the contact email of ANY listing (owner, agent or public)
+// without touching the rest of it. This is the address booking requests for
+// that one listing are sent to; the owner's login email is not changed.
+// An empty value clears it, but only if the listing still has a WhatsApp number.
+app.patch("/api/admin/listings/:id/email", requireAuth, requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  const existing = (await store.getListings()).find((l) => l.id === id);
+  if (!existing) return res.status(404).json({ error: "Listing not found." });
+  const email = String(req.body?.ownerEmail ?? "").trim();
+  if (email && (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
+    return res.status(400).json({ error: "Enter a valid email address." });
+  }
+  if (!email && !existing.ownerWhatsapp && !existing.isPublic) {
+    return res.status(400).json({ error: "This listing has no WhatsApp number, so it needs an email." });
+  }
+  const updated = await store.updateListing(id, { ownerEmail: email });
   if (!updated) return res.status(404).json({ error: "Listing not found." });
   res.json({ listing: updated });
 }));
