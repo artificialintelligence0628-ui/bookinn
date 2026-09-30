@@ -963,6 +963,22 @@ app.post("/api/admin/users/:id/impersonate", requireAuth, requireAdmin, ah(async
   const token = signToken(targetUser);
   res.json({ token, user: publicUser(targetUser) });
 }));
+// Permanently deletes any non-admin account (Owner, Student, Parent or Agent)
+// together with everything it owns: listings and, through them, inquiries and
+// reviews (database cascade). Admin accounts can't be deleted here, and an
+// admin can't delete their own account.
+app.delete("/api/admin/users/:id", requireAuth, requireAdmin, ah(async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Invalid user id." });
+  if (id === Number(req.user.sub)) return res.status(400).json({ error: "You can't delete your own account." });
+  const target = await store.getUserById(id);
+  if (!target) return res.status(404).json({ error: "User not found." });
+  if (target.role === ADMIN_ROLE) return res.status(400).json({ error: "Admin accounts can't be deleted." });
+  const result = await store.deleteUser(id);
+  if (!result) return res.status(404).json({ error: "User not found." });
+  res.json({ ok: true, listingsDeleted: result.listingsDeleted });
+}));
+
 // ---- Public hostels (admin-managed listings) -------------------------------
 // Same shape as an owner listing, but created by a platform admin, flagged
 // is_public, exempt from subscription/plan limits, and only editable by admins.
