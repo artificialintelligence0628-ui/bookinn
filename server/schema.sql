@@ -166,3 +166,27 @@ CREATE INDEX IF NOT EXISTS idx_email_campaigns_created_at ON email_campaigns(cre
 -- "Official BookInn Agent" label on their listings; ordinary agents are
 -- unaffected and keep the plain "Agent listing" badge.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS official_agent BOOLEAN NOT NULL DEFAULT false;
+
+-- ---------------------------------------------------------
+-- Public halls & hostels (university-owned), managed by platform admin
+-- ---------------------------------------------------------
+CREATE TABLE IF NOT EXISTS public_halls (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  university TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'Hall',
+  notes TEXT NOT NULL DEFAULT '',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS public_halls_uni_name_idx ON public_halls (lower(university), lower(name));
+
+-- ---------------------------------------------------------
+-- Public hostels (admin-managed listings)
+-- ---------------------------------------------------------
+-- Listings created by a platform admin for university/public hostels and halls.
+-- They behave like normal listings but show a "Public Hostel" tag, are always
+-- visible (no owner subscription needed), and can only be managed by an admin.
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT false;
+
+-- Which kind of public listing this is: 'Hostel' or 'Hall' (only set when is_public).
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS public_kind TEXT;
