@@ -158,3 +158,11 @@ CREATE INDEX IF NOT EXISTS idx_email_recipients_campaign_id ON email_recipients(
 CREATE INDEX IF NOT EXISTS idx_email_recipients_message_id ON email_recipients(provider_message_id);
 CREATE INDEX IF NOT EXISTS idx_email_campaigns_status ON email_campaigns(status);
 CREATE INDEX IF NOT EXISTS idx_email_campaigns_created_at ON email_campaigns(created_at);
+
+-- ---------------------------------------------------------
+-- Official BookInn Agents
+-- ---------------------------------------------------------
+-- Set only by a platform admin (Agents tab). Official agents get an
+-- "Official BookInn Agent" label on their listings; ordinary agents are
+-- unaffected and keep the plain "Agent listing" badge.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS official_agent BOOLEAN NOT NULL DEFAULT false;
