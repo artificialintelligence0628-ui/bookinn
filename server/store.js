@@ -53,6 +53,7 @@ function mapListing(row) {
     availability: row.availability,
     reviews: row.reviews,
     views: row.views,
+    createdAt: row.created_at,
   };
 }
 
