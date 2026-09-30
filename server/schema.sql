@@ -190,3 +190,11 @@ ALTER TABLE listings ADD COLUMN IF NOT EXISTS is_public BOOLEAN NOT NULL DEFAULT
 
 -- Which kind of public listing this is: 'Hostel' or 'Hall' (only set when is_public).
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS public_kind TEXT;
+
+-- ---------------------------------------------------------
+-- Admin-initiated password changes
+-- ---------------------------------------------------------
+-- Set when a platform admin changes someone's password. Login tokens issued
+-- before this moment are rejected, so a changed password signs out any session
+-- that was already open on the old one.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
