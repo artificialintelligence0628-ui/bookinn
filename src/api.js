@@ -67,6 +67,12 @@ export const api = {
   getAdminUsers: (token) => request("/admin/users", { token }),
   impersonateUser: (id, token) => request(`/admin/users/${id}/impersonate`, { method: "POST", token }),
   getAdminStats: (token) => request("/admin/stats", { token }),
+  adminAddPublicListing: (listing, token) => request("/admin/public-listings", { method: "POST", body: listing, token }),
+  adminUpdatePublicListing: (id, listing, token) => request(`/admin/public-listings/${id}`, { method: "PUT", body: listing, token }),
+  adminDeleteListing: (id, token) => request(`/admin/listings/${id}`, { method: "DELETE", token }),
+  getPublicHalls: (university) => request(university ? `/public-halls?university=${encodeURIComponent(university)}` : "/public-halls"),
+  addPublicHall: (payload, token) => request("/admin/public-halls", { method: "POST", body: payload, token }),
+  deletePublicHall: (id, token) => request(`/admin/public-halls/${id}`, { method: "DELETE", token }),
   setOfficialAgent: (id, official, token) => request(`/admin/agents/${id}/official`, { method: "PATCH", body: { official }, token }),
 
   // Email & Communication Center (Platform Admin only)
