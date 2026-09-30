@@ -13,6 +13,7 @@ export function Badge({ children, tone = "blue" }) {
     yellow: { background: "#fff6dc", color: C.yellowDark },
     green: { background: "#e7f7e8", color: "#0a6b0f" },
     red: { background: "#fdecea", color: "#b3261e" },
+    purple: { background: "#f0e9ff", color: "#5b2ea6" },
   }[tone];
   return (
     <span style={styles} className="text-xs font-semibold px-2 py-1 rounded">
