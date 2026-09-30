@@ -530,7 +530,9 @@ function ListingCard({ listing, isFav, toggleFav, onOpen }) {
               <Badge tone="yellow"><span className="flex items-center gap-1"><Sparkles size={12} /> Featured</span></Badge>
             )}
             {listing.listedByAgent && (
-              <Badge tone="blue"><span className="flex items-center gap-1"><Briefcase size={12} /> Agent listing</span></Badge>
+              listing.officialAgent
+                ? <Badge tone="green"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Official BookInn Agent</span></Badge>
+                : <Badge tone="blue"><span className="flex items-center gap-1"><Briefcase size={12} /> Agent listing</span></Badge>
             )}
           </div>
         )}
@@ -967,7 +969,7 @@ function ReviewForm({ listingId, onSubmitted }) {
             <Badge>{listing.bath}</Badge>
             {listing.kitchen && <Badge tone="green">Shared kitchen</Badge>}
                        {listing.featured && <Badge tone="yellow">Featured listing</Badge>}
-            {listing.listedByAgent && <Badge tone="blue"><span className="flex items-center gap-1"><Briefcase size={12} /> Agent listing</span></Badge>}
+            {listing.listedByAgent && (listing.officialAgent ? <Badge tone="green"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Official BookInn Agent</span></Badge> : <Badge tone="blue"><span className="flex items-center gap-1"><Briefcase size={12} /> Agent listing</span></Badge>)}
           </div>
 
           <h3 style={{ color: C.ink }} className="font-bold text-base mb-2">About this room</h3>
@@ -3187,8 +3189,55 @@ function PlatformAdminView({ token, onManageOwner }) {
     if (!q) return true;
     return a.agentName.toLowerCase().includes(q) || a.agentEmail.toLowerCase().includes(q);
   });
+  // Official BookInn Agent toggle — flips the flag on the server, then patches
+  // local state so the table (and the Listings tab) update without a reload.
+  const [officialBusyId, setOfficialBusyId] = useState(null);
+  const toggleOfficialAgent = async (agent) => {
+    const next = !agent.officialAgent;
+    const ok = window.confirm(
+      next
+        ? `Mark ${agent.agentName} as an Official BookInn Agent? Their listings will show an "Official BookInn Agent" label to students.`
+        : `Remove the Official BookInn Agent label from ${agent.agentName}?`
+    );
+    if (!ok) return;
+    setOfficialBusyId(agent.agentId);
+    try {
+      await api.setOfficialAgent(agent.agentId, next, token);
+      setStats((prev) => prev && ({
+        ...prev,
+        agentsOverview: prev.agentsOverview.map((a) => (a.agentId === agent.agentId ? { ...a, officialAgent: next } : a)),
+      }));
+      const agentListingIds = new Set((agent.listings || []).map((l) => l.id));
+      setListings((prev) => prev.map((l) => (agentListingIds.has(l.id) ? { ...l, officialAgent: next } : l)));
+    } catch (err) {
+      alert(err.message);
+    } finally {
+      setOfficialBusyId(null);
+    }
+  };
   const agentColumns = [
-    { key: "agentName", label: "Name" },
+    {
+      key: "agentName", label: "Name", render: (a) => (
+        <span className="flex items-center gap-2 flex-wrap">
+          {a.agentName}
+          {a.officialAgent && (
+            <Badge tone="green"><span className="flex items-center gap-1"><BadgeCheck size={12} /> Official</span></Badge>
+          )}
+        </span>
+      ),
+    },
+    {
+      key: "official", label: "Official BookInn Agent", render: (a) => (
+        <button
+          onClick={() => toggleOfficialAgent(a)}
+          disabled={officialBusyId === a.agentId}
+          style={{ color: a.officialAgent ? "#b3261e" : C.blue }}
+          className="text-xs font-semibold hover:underline whitespace-nowrap disabled:opacity-60"
+        >
+          {officialBusyId === a.agentId ? "Saving…" : a.officialAgent ? "Remove official status" : "Make official"}
+        </button>
+      ),
+    },
     {
       key: "hostels", label: "Hostels/Apartments", render: (a) => {
         const names = (a.listings || []).map((l) => l.name);
@@ -3230,7 +3279,9 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "type", label: "Type" },
     {
       key: "listedBy", label: "Listed by", render: (l) => (
-        l.listedByAgent
+        l.officialAgent
+          ? <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#0a6b0f" }}><BadgeCheck size={13} /> Official BookInn Agent</span>
+          : l.listedByAgent
           ? <span className="flex items-center gap-1 text-xs font-semibold" style={{ color: "#7c3aed" }}><Briefcase size={13} /> Agent</span>
           : <span style={{ color: C.gray600 }} className="text-xs">Owner</span>
       ),
