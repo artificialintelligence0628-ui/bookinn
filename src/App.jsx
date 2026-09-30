@@ -3299,6 +3299,43 @@ function PlatformAdminView({ token, onManageOwner }) {
       setDeletingUserId(null);
     }
   };
+  // Edit an account's login email / password (any non-admin role).
+  const [editUser, setEditUser] = useState(null); // { id, name, role, email }
+  const [editEmail, setEditEmail] = useState("");
+  const [editPassword, setEditPassword] = useState("");
+  const [showEditPassword, setShowEditPassword] = useState(false);
+  const [editBusy, setEditBusy] = useState(false);
+  const [editError, setEditError] = useState("");
+  const openEditUser = (u) => {
+    setEditUser(u);
+    setEditEmail(u.email || "");
+    setEditPassword("");
+    setShowEditPassword(false);
+    setEditError("");
+  };
+  const closeEditUser = () => { if (!editBusy) setEditUser(null); };
+  const saveEditUser = async () => {
+    const email = editEmail.trim();
+    const emailChanged = email !== (editUser.email || "");
+    const passwordChanged = editPassword !== "";
+    if (!emailChanged && !passwordChanged) { setEditError("Change the email or enter a new password."); return; }
+    setEditBusy(true);
+    setEditError("");
+    try {
+      const payload = {};
+      if (emailChanged) payload.email = email;
+      if (passwordChanged) payload.password = editPassword;
+      const { user } = await api.adminUpdateUser(editUser.id, payload, token);
+      setUsers((prev) => prev.map((u) => (u.id === user.id ? { ...u, email: user.email, emailVerified: user.emailVerified } : u)));
+      api.getAdminStats(token).then(setStats).catch(() => {});
+      setEditUser(null);
+    } catch (err) {
+      setEditError(err.message);
+    } finally {
+      setEditBusy(false);
+    }
+  };
+
   const deleteButton = (id, name, role, listingCount) => (
     <button
       onClick={() => deleteUserAsAdmin({ id, name, role, listingCount })}
@@ -3309,8 +3346,20 @@ function PlatformAdminView({ token, onManageOwner }) {
       {deletingUserId === id ? "Deleting…" : "Delete"}
     </button>
   );
+  const accountActions = (id, name, role, email, listingCount) => (
+    <span className="flex items-center gap-4">
+      <button
+        onClick={() => openEditUser({ id, name, role, email })}
+        style={{ color: C.blue }}
+        className="text-xs font-semibold hover:underline whitespace-nowrap"
+      >
+        Edit account
+      </button>
+      {deleteButton(id, name, role, listingCount)}
+    </span>
+  );
   const personDeleteColumn = {
-    key: "delete", label: "", render: (u) => deleteButton(u.id, u.name, u.role, (listingNamesByOwnerId[u.id] || []).length),
+    key: "delete", label: "", render: (u) => accountActions(u.id, u.name, u.role, u.email, (listingNamesByOwnerId[u.id] || []).length),
   };
   const ownerColumns = [
     personColumns[0], // Name
@@ -3333,7 +3382,7 @@ function PlatformAdminView({ token, onManageOwner }) {
           >
             {impersonatingId === u.id ? "Opening…" : "Manage listings →"}
           </button>
-          {deleteButton(u.id, u.name, u.role, (listingNamesByOwnerId[u.id] || []).length)}
+          {accountActions(u.id, u.name, u.role, u.email, (listingNamesByOwnerId[u.id] || []).length)}
         </span>
       ),
     },
@@ -3396,7 +3445,7 @@ function PlatformAdminView({ token, onManageOwner }) {
           >
             {impersonatingId === a.agentId ? "Opening…" : "Manage listings →"}
           </button>
-          {deleteButton(a.agentId, a.agentName, "Agent", (a.listings || []).length)}
+          {accountActions(a.agentId, a.agentName, "Agent", a.agentEmail, (a.listings || []).length)}
         </span>
       ),
     },
@@ -3789,6 +3838,73 @@ function PlatformAdminView({ token, onManageOwner }) {
         </>
       )}
 
+      {editUser && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,20,35,0.55)" }} onClick={closeEditUser}>
+          <div style={{ background: C.white }} className="rounded-lg max-w-md w-full p-6 relative max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <button onClick={closeEditUser} className="absolute top-4 right-4" aria-label="Close"><X size={20} color={C.gray600} /></button>
+            <h3 style={{ color: C.ink }} className="font-bold text-lg mb-1">Edit account</h3>
+            <p style={{ color: C.gray600 }} className="text-xs mb-4">{editUser.name} · {editUser.role}</p>
+
+            <label style={{ color: C.ink }} className="text-sm font-semibold block mb-1.5">Login email</label>
+            <input
+              type="email"
+              value={editEmail}
+              onChange={(e) => setEditEmail(e.target.value)}
+              autoComplete="off"
+              style={{ borderColor: C.border }}
+              className="border rounded-md px-3 py-2 text-sm outline-none w-full mb-1.5"
+            />
+            <p style={{ color: C.gray600 }} className="text-xs mb-4">
+              The address they sign in with. It will need to be verified again. Contact emails on their listings are edited in the Listings tab.
+            </p>
+
+            <label style={{ color: C.ink }} className="text-sm font-semibold block mb-1.5">New password</label>
+            <div className="relative mb-1.5">
+              <input
+                type={showEditPassword ? "text" : "password"}
+                value={editPassword}
+                onChange={(e) => setEditPassword(e.target.value)}
+                placeholder="Leave empty to keep the current password"
+                autoComplete="new-password"
+                style={{ borderColor: C.border }}
+                className="border rounded-md pl-3 pr-16 py-2 text-sm outline-none w-full"
+              />
+              <button
+                type="button"
+                onClick={() => setShowEditPassword((v) => !v)}
+                style={{ color: C.blue }}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-semibold"
+              >
+                {showEditPassword ? "Hide" : "Show"}
+              </button>
+            </div>
+            <p style={{ color: C.gray600 }} className="text-xs mb-4">
+              At least 8 characters. Changing it signs them out of any device where they're already logged in. Share the new password with them yourself.
+            </p>
+
+            {editError && <p style={{ color: "#b3261e" }} className="text-sm mb-3">{editError}</p>}
+
+            <div className="flex justify-end gap-2">
+              <button
+                onClick={closeEditUser}
+                disabled={editBusy}
+                style={{ borderColor: C.border, color: C.ink }}
+                className="border rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={saveEditUser}
+                disabled={editBusy}
+                style={{ background: C.blue, color: C.white }}
+                className="rounded-md px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                {editBusy ? "Saving…" : "Save changes"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {rosterListing && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,20,35,0.55)" }} onClick={() => setRosterListing(null)}>
           <div style={{ background: C.white }} className="rounded-lg max-w-md w-full p-6 relative max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
