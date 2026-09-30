@@ -19,6 +19,7 @@ function mapUser(row) {
     createdAt: row.created_at,
     emailVerified: row.email_verified,
     university: row.university,
+    officialAgent: !!row.official_agent,
   };
 }
 
@@ -240,6 +241,13 @@ export const store = {
     const { rows } = await pool.query(
       "UPDATE users SET subscription = $1 WHERE id = $2 RETURNING *",
       [JSON.stringify(subscription), id]
+    );
+    return mapUser(rows[0]);
+  },
+  async setOfficialAgent(id, value) {
+    const { rows } = await pool.query(
+      "UPDATE users SET official_agent = $1 WHERE id = $2 AND role = 'Agent' RETURNING *",
+      [!!value, id]
     );
     return mapUser(rows[0]);
   },
