@@ -65,6 +65,7 @@ export const api = {
   deleteUniversity: (id, token) => request(`/admin/universities/${id}`, { method: "DELETE", token }),
   // Platform admin only (role === "Admin") — site-wide stats and user directory.
   getAdminUsers: (token) => request("/admin/users", { token }),
+  adminDeleteUser: (id, token) => request(`/admin/users/${id}`, { method: "DELETE", token }),
   impersonateUser: (id, token) => request(`/admin/users/${id}/impersonate`, { method: "POST", token }),
   getAdminStats: (token) => request("/admin/stats", { token }),
   adminAddPublicListing: (listing, token) => request("/admin/public-listings", { method: "POST", body: listing, token }),
