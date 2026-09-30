@@ -67,6 +67,7 @@ export const api = {
   getAdminUsers: (token) => request("/admin/users", { token }),
   impersonateUser: (id, token) => request(`/admin/users/${id}/impersonate`, { method: "POST", token }),
   getAdminStats: (token) => request("/admin/stats", { token }),
+  setOfficialAgent: (id, official, token) => request(`/admin/agents/${id}/official`, { method: "PATCH", body: { official }, token }),
 
   // Email & Communication Center (Platform Admin only)
   getEmailStats: (token) => request("/admin/emails/stats", { token }),
