@@ -145,6 +145,7 @@ function publicUser(user) {
     createdAt: user.createdAt,
     emailVerified: !!user.emailVerified,
     university: user.university || null,
+    officialAgent: !!user.officialAgent,
   };
 }
 
@@ -563,6 +564,8 @@ function toPublicListing(listing, owner) {
     // when they're dealing with a listing agent rather than the landlord
     // directly.
     listedByAgent: owner?.role === "Agent",
+    // Only true for agents a platform admin has marked as Official BookInn Agents.
+    officialAgent: owner?.role === "Agent" && !!owner?.officialAgent,
   };
 }
 
@@ -955,6 +958,18 @@ app.post("/api/admin/users/:id/impersonate", requireAuth, requireAdmin, ah(async
   const token = signToken(targetUser);
   res.json({ token, user: publicUser(targetUser) });
 }));
+// Marks / unmarks an Agent account as an Official BookInn Agent. Admin only, and
+// only Agent accounts can be flagged (Owners/Students/etc. are rejected).
+app.patch("/api/admin/agents/:id/official", requireAuth, requireAdmin, ah(async (req, res) => {
+  if (typeof req.body?.official !== "boolean") {
+    return res.status(400).json({ error: "\"official\" must be true or false." });
+  }
+  const target = await store.getUserById(req.params.id);
+  if (!target) return res.status(404).json({ error: "User not found." });
+  if (target.role !== "Agent") return res.status(400).json({ error: "Only Agent accounts can be Official BookInn Agents." });
+  const updated = await store.setOfficialAgent(target.id, req.body.official);
+  res.json({ agentId: updated.id, officialAgent: !!updated.officialAgent });
+}));
 app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
   const users = await store.getUsers();
   const listings = await store.getListings();
@@ -986,6 +1001,7 @@ app.get("/api/admin/stats", requireAuth, requireAdmin, ah(async (req, res) => {
         agentId: u.id,
         agentName: u.name,
         agentEmail: u.email,
+        officialAgent: !!u.officialAgent,
         listings: agentListings.map((l) => ({ id: l.id, name: l.name, university: l.university })),
         listingsCount: agentListings.length,
         totalInquiries,
