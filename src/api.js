@@ -48,6 +48,7 @@ export const api = {
   recordView: (id) => request(`/listings/${id}/view`, { method: "POST" }).catch(() => {}),
   signup: (name, email, password, role, university) => request("/auth/signup", { method: "POST", body: { name, email, password, role, university } }),
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
+  googleAuth: (credential, role, university) => request("/auth/google", { method: "POST", body: { credential, role, university } }),
   me: (token) => request("/auth/me", { token }),
   forgotPassword: (email) => request("/auth/forgot-password", { method: "POST", body: { email } }),
   resendVerification: (email) => request("/auth/resend-verification", { method: "POST", body: { email } }),
