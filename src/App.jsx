@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { api } from "./api.js";
 import PlatformAdminEmails from "./AdminEmails.jsx";
+import GoogleAuthButton, { GOOGLE_CLIENT_ID } from "./GoogleAuth.jsx";
 import { C } from "./theme.js";
 import { Badge, PrimaryButton, GhostButton, AdminStatCard, DataTable, RoleBadge } from "./adminUI.jsx";
 import {
@@ -2230,6 +2231,43 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
   const [needsVerification, setNeedsVerification] = useState(false);
   const [resendBusy, setResendBusy] = useState(false);
   const [resendSent, setResendSent] = useState(false);
+  // Set when someone picks a Google account that has no BookInn account yet —
+  // we keep Google's token and ask for their account type (and campus) before
+  // creating it.
+  const [googlePending, setGooglePending] = useState(null); // { credential, name, email }
+
+  const handleGoogleCredential = async (credential) => {
+    setError("");
+    setBusy(true);
+    try {
+      const data = await api.googleAuth(credential);
+      if (data.status === "needs_signup") {
+        setGooglePending({ credential, name: data.name, email: data.email });
+      } else {
+        onAuthSuccess(data.user, data.token);
+      }
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const finishGoogleSignup = async () => {
+    setError("");
+    if (role === "Student" && !university) { setError("Select your university."); return; }
+    setBusy(true);
+    try {
+      const data = await api.googleAuth(googlePending.credential, role, role === "Student" ? university : undefined);
+      onAuthSuccess(data.user, data.token);
+    } catch (err) {
+      // Google's token is short-lived — if it expired mid-way, start over.
+      setError(err.message);
+      if (/failed|try again/i.test(err.message)) setGooglePending(null);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const emailValid = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
@@ -2287,6 +2325,60 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
 
   const submit = () => (mode === "signin" ? handleSignIn() : handleSignUp());
 
+  if (googlePending) {
+    return (
+      <div className="max-w-md mx-auto px-4 py-16">
+        <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white">
+          <img src={bookinnWordmark} alt="BookInn" className="h-8 mb-4" />
+          <h1 style={{ color: C.ink }} className="text-xl font-extrabold mb-1">Almost done, {googlePending.name.split(" ")[0]}</h1>
+          <p style={{ color: C.gray600 }} className="text-sm mb-4">
+            Creating your BookInn account for <span className="font-semibold">{googlePending.email}</span>. Tell us how you'll use it.
+          </p>
+          {error && (
+            <div style={{ background: "#fdecea", color: "#b3261e" }} className="text-xs rounded-md px-3 py-2 mb-3">{error}</div>
+          )}
+          <div className="flex flex-col gap-3">
+            <div>
+              <p style={{ color: C.ink }} className="text-xs font-semibold mb-1.5">I am a…</p>
+              <div className="flex gap-2">
+                {["Student", "Parent", "Owner", "Agent"].map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => setRole(r)}
+                    style={{ background: role === r ? C.blue : C.white, color: role === r ? C.white : C.ink, borderColor: C.border }}
+                    className="border rounded-md px-3 py-1.5 text-xs font-semibold flex-1"
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {role === "Student" && (
+              <div>
+                <p style={{ color: C.ink }} className="text-xs font-semibold mb-1.5">My university</p>
+                <select
+                  value={university}
+                  aria-label="University"
+                  onChange={(e) => setUniversity(e.target.value)}
+                  style={{ borderColor: C.border, color: C.ink }}
+                  className="border rounded-md px-3 py-2.5 text-sm outline-none w-full"
+                >
+                  {universities.map((u) => <option key={u}>{u}</option>)}
+                </select>
+                <p style={{ color: C.gray600 }} className="text-xs mt-1.5">You'll only see hostels and apartments near this campus.</p>
+              </div>
+            )}
+            <PrimaryButton full onClick={finishGoogleSignup} disabled={busy}>
+              {busy ? "Please wait…" : "Create account"}
+            </PrimaryButton>
+            <GhostButton full onClick={() => { setGooglePending(null); setError(""); }}>Use a different account</GhostButton>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-md mx-auto px-4 py-16">
       <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white">
@@ -2333,6 +2425,21 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
               )
             )}
           </div>
+        )}
+
+        {GOOGLE_CLIENT_ID && (
+          <>
+            <GoogleAuthButton
+              onCredential={handleGoogleCredential}
+              text={mode === "signin" ? "signin_with" : "signup_with"}
+              oneTap={mode === "signin"}
+            />
+            <div className="flex items-center gap-3 my-4">
+              <div style={{ background: C.border }} className="h-px flex-1" />
+              <span style={{ color: C.gray600 }} className="text-xs">or use email</span>
+              <div style={{ background: C.border }} className="h-px flex-1" />
+            </div>
+          </>
         )}
 
         <div className="flex flex-col gap-3">
