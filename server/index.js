@@ -5,6 +5,7 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { OAuth2Client } from "google-auth-library";
 import multer from "multer";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -53,6 +54,12 @@ function requireEnv(name, value, placeholders) {
 const JWT_SECRET = requireEnv("JWT_SECRET", process.env.JWT_SECRET, PLACEHOLDER_SECRETS)
   || "bookinn-dev-secret-change-me"; // only reachable outside production
 
+// "Continue with Google" — the OAuth Web client ID from Google Cloud Console.
+// Optional: when it's unset the /api/auth/google route answers 503 and the
+// frontend hides the Google button, so the rest of auth keeps working.
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const googleClient = GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
+
 const app = express();
 app.set("trust proxy", 3); // Render's traffic passes through Cloudflare, then Render's own internal proxy — 2 hops before this app sees the request. Confirmed via /api/debug-ip: with 1, req.ip resolved to Render's internal address (10.24.245.3) instead of the real visitor IP; with 2, it correctly resolves to the visitor's real IP.
 
@@ -62,6 +69,9 @@ app.set("trust proxy", 3); // Render's traffic passes through Cloudflare, then R
 // CSP is spelled out explicitly instead of left at helmet's `default-src
 // 'self'` — every allowance below maps to something the app actually does.
 app.use(helmet({
+  // Google's sign-in popup needs to talk back to this page; helmet's default
+  // "same-origin" would sever that connection.
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
@@ -70,10 +80,11 @@ app.use(helmet({
       // 'unsafe-inline' is needed because the app sets React inline style={{}}
       // attributes throughout, and injects the Google Fonts @import via a
       // literal <style> tag — both are CSP "style-src" territory.
-      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
+      styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com", "https://accounts.google.com/gsi/style"],
       fontSrc: ["'self'", "https://fonts.gstatic.com"],
-      scriptSrc: ["'self'"],
-      connectSrc: ["'self'"],
+      scriptSrc: ["'self'", "https://accounts.google.com/gsi/client"],
+      connectSrc: ["'self'", "https://accounts.google.com/gsi/"],
+      frameSrc: ["https://accounts.google.com/gsi/"],
       objectSrc: ["'none'"],
       frameAncestors: ["'self'"],
     },
@@ -316,6 +327,13 @@ const signupLimiter = rateLimit({
   legacyHeaders: false,
 message: { error: "Too many accounts created from this network. Please wait 1 hour and try again." },
 });
+const googleAuthLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many sign-in attempts. Please wait 15 minutes and try again." },
+});
 const passwordResetLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 5,
@@ -449,6 +467,64 @@ app.post("/api/auth/login", loginLimiter, ah(async (req, res) => {
   }
   const token = signToken(user);
   res.json({ token, user: publicUser(user) });
+}));
+
+// Sign in / sign up with Google. The browser sends the signed ID token that
+// Google Identity Services handed it; we verify the signature, audience and
+// expiry server-side, and only trust the email if Google says it's verified.
+//  - Existing account (matched by email): signs in. Google already proved the
+//    inbox is theirs, so the account is marked email-verified too.
+//  - New email, no role yet: answers { status: "needs_signup", name, email } so
+//    the app can ask "I am a… / my university" (same choices as the normal
+//    signup form), then calls this again with role (+ university).
+//  - Admin accounts never sign in this way — they use the admin login page.
+app.post("/api/auth/google", googleAuthLimiter, ah(async (req, res) => {
+  if (!googleClient) return res.status(503).json({ error: "Google sign-in isn't available right now." });
+  const { credential, role, university } = req.body || {};
+  if (!credential || typeof credential !== "string") return res.status(400).json({ error: "Missing Google credential." });
+
+  let payload;
+  try {
+    const ticket = await googleClient.verifyIdToken({ idToken: credential, audience: GOOGLE_CLIENT_ID });
+    payload = ticket.getPayload();
+  } catch {
+    return res.status(401).json({ error: "Google sign-in failed. Please try again." });
+  }
+  if (!payload?.email || !payload.email_verified) {
+    return res.status(401).json({ error: "Your Google email address isn't verified." });
+  }
+  const email = payload.email.toLowerCase();
+  const displayName = (payload.name || email.split("@")[0]).trim();
+
+  let user = await store.getUserByEmail(email);
+  if (user) {
+    if (user.role === ADMIN_ROLE) {
+      return res.status(403).json({ error: "Admin accounts must sign in with email and password." });
+    }
+    if (!user.emailVerified) user = await store.markEmailVerified(user.id);
+    return res.json({ status: "ok", token: signToken(user), user: publicUser(user) });
+  }
+
+  // New person — needs an account type (and a campus if they're a student).
+  const needsRole = !role || !ROLES.includes(role);
+  let needsUniversity = false;
+  if (!needsRole && role === "Student") {
+    const universities = await store.getUniversities();
+    needsUniversity = !university || !universities.some((u) => u.name === university);
+  }
+  if (needsRole || needsUniversity) {
+    return res.json({ status: "needs_signup", name: displayName, email });
+  }
+
+  // No password was chosen, so store a random hash nobody knows — they can
+  // always set a real one later with "Forgot password?".
+  const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
+  user = await store.addUser({
+    name: displayName, email, passwordHash, role,
+    university: role === "Student" ? university : null,
+  });
+  user = await store.markEmailVerified(user.id);
+  res.status(201).json({ status: "ok", token: signToken(user), user: publicUser(user) });
 }));
 
 app.get("/api/auth/me", requireAuth, ah(async (req, res) => {
