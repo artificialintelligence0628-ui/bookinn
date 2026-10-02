@@ -23,6 +23,10 @@ services:
         sync: false # optional — only needed if you're using Paystack payments
       - key: VITE_PAYSTACK_PUBLIC_KEY
         sync: false # optional — only needed if you're using Paystack payments
+      - key: GOOGLE_CLIENT_ID
+        sync: false # optional — Google OAuth Web client ID, enables "Continue with Google" (see .env.example)
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false # optional — same value as GOOGLE_CLIENT_ID; baked into the frontend at build time
       - key: RESEND_API_KEY
         sync: false # set to your Resend API key in the Render dashboard — required for password reset and email verification
       - key: RESEND_WEBHOOK_SECRET
