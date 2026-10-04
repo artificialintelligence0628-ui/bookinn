@@ -97,6 +97,8 @@ const HOSTEL_ROOM_TYPES = ["One in a room", "Two in a room", "Three in a room", 
 const APARTMENT_ROOM_TYPES = ["Self-contained", "Shared Apartment"];
 const ALL_ROOM_TYPES = [...HOSTEL_ROOM_TYPES, ...APARTMENT_ROOM_TYPES];
 const AVAILABILITY_STATUSES = ["Space available", "Partly booked", "Fully booked"];
+// Beds per room where friends can book together (mirrors GROUP_CAPACITY in server/index.js).
+const GROUP_CAPACITY = { "Two in a room": 2, "Three in a room": 3, "Four in a room": 4, "Six in a room": 6 };
 const AVAILABILITY_TONE = { "Space available": "green", "Partly booked": "yellow", "Fully booked": "red" };
 
 // Listings now come from the backend API (see server/index.js and server/seed.js for the seed data).
@@ -725,6 +727,13 @@ function ContactModal({ listing, roomType, onClose }) {
   const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState("");
   const [sentWaLink, setSentWaLink] = useState("");
+  // Roommate group: "none" (just me), "create" (start one), or "join" (friend's code).
+  const groupCapacity = GROUP_CAPACITY[roomType] || 0;
+  const [groupMode, setGroupMode] = useState("none");
+  const [groupCode, setGroupCode] = useState("");
+  const [groupInfo, setGroupInfo] = useState(null); // verified summary of the code being joined
+  const [groupChecking, setGroupChecking] = useState(false);
+  const [groupResult, setGroupResult] = useState(null); // group returned by the server after sending
   const [form, setForm] = useState({
     name: "", phone: "", email: "", moveIn: "",
    message: `Hi, I saw ${listing.name}${roomType ? ` (${roomType})` : ""} on BookInn and I'm interested. Is it still available?`,
@@ -746,15 +755,21 @@ function ContactModal({ listing, roomType, onClose }) {
 
   const submitBookingRequest = async (waTab) => {
     try {
-      await api.sendInquiry({
+      const payload = {
         listingId: listing.id, name: form.name, phone: form.phone, email: form.email,
         moveIn: form.moveIn,
         message: form.message,
         roomType,
-      });
+      };
+      if (groupMode === "create") payload.group = { action: "create" };
+      if (groupMode === "join") payload.group = { action: "join", code: groupCode };
+      const result = await api.sendInquiry(payload);
+      const grp = result?.group || null;
+      setGroupResult(grp);
       if (ownerWhatsappDigits) {
         const summary = [
           `New BookInn booking request for ${listing.name}${roomType ? ` — ${roomType}` : ""}`,
+          grp ? `Roommate group ${grp.code}: ${grp.joined} of ${grp.capacity} beds requested together` : null,
           `Name: ${form.name}`,
           form.phone ? `Phone: ${form.phone}` : null,
           form.email ? `Email: ${form.email}` : null,
@@ -784,9 +799,40 @@ function ContactModal({ listing, roomType, onClose }) {
     }
   };
 
+  const checkGroupCode = async () => {
+    setSendError("");
+    setGroupInfo(null);
+    if (!groupCode.trim()) { setSendError("Enter the group code your friend shared."); return; }
+    setGroupChecking(true);
+    try {
+      const { group } = await api.getBookingGroup(groupCode.trim());
+      if (group.listingId !== listing.id || group.roomType !== roomType) {
+        setSendError(`That code is for a different room. It's for "${group.roomType}" at another listing or room type.`);
+      } else if (group.joined >= group.capacity) {
+        setSendError("This group is already full.");
+      } else {
+        setGroupInfo(group);
+      }
+    } catch (err) {
+      setSendError(err.message);
+    } finally {
+      setGroupChecking(false);
+    }
+  };
+
+  const groupShareLink = groupResult
+    ? `https://wa.me/?text=${encodeURIComponent(
+        `Join my room group on BookInn! ${listing.name} — ${roomType}. ` +
+        `Open ${window.location.origin}, find "${listing.name}", choose "${roomType}", tap Contact, ` +
+        `pick "I have a group code" and enter: ${groupResult.code}`
+      )}`
+    : "";
+
   const sendRequest = () => {
     if (!form.name) { setSendError("Enter your name so the property manager knows who's asking."); return; }
     if (!ownerWhatsappDigits && !mailLink) { setSendError("This owner hasn't added a WhatsApp number or email yet."); return; }
+    if (groupMode === "join" && !groupInfo) { setSendError("Check your group code first, or choose \"Just me\"."); return; }
+    if (groupMode !== "none" && !form.phone && !form.email) { setSendError("Add a phone number or email so your roommates and the owner can reach you."); return; }
     setSendError("");
     setBusy(true);
     // Open the tab now, synchronously inside this click handler, so the
@@ -809,6 +855,23 @@ function ContactModal({ listing, roomType, onClose }) {
             <p style={{ color: C.navy }} className="font-semibold text-sm">
               Inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
             </p>
+            {groupResult && (
+              <div style={{ background: C.white, borderColor: C.border }} className="border rounded-md p-3 mt-3 text-left">
+                <p style={{ color: C.gray600 }} className="text-xs">Your group code</p>
+                <p style={{ color: C.navy }} className="text-2xl font-extrabold tracking-widest">{groupResult.code}</p>
+                <p style={{ color: C.gray600 }} className="text-xs mt-1">
+                  {groupResult.joined} of {groupResult.capacity} beds requested.
+                  {groupResult.joined < groupResult.capacity ? " Share this code with the friends you want in the room." : " Your group is full."}
+                </p>
+                {groupResult.joined < groupResult.capacity && (
+                  <a href={groupShareLink} target="_blank" rel="noopener noreferrer"
+                    style={{ borderColor: C.border, color: C.navy }}
+                    className="mt-2 border text-sm font-semibold py-2 rounded-md flex items-center justify-center gap-1.5">
+                    <MessageCircle size={16} /> Share code on WhatsApp
+                  </a>
+                )}
+              </div>
+            )}
             {sentWaLink && (
               <a
                 href={sentWaLink}
@@ -844,6 +907,47 @@ function ContactModal({ listing, roomType, onClose }) {
                   style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
                 <input type="date" value={form.moveIn} onChange={(e) => setForm({ ...form, moveIn: e.target.value })}
                   style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+                {groupCapacity > 0 && (
+                  <div style={{ borderColor: C.border, background: C.blueLight }} className="border rounded-md p-3">
+                    <p style={{ color: C.ink }} className="text-sm font-semibold mb-0.5">Booking with friends?</p>
+                    <p style={{ color: C.gray600 }} className="text-xs mb-2">
+                      Request beds together in this {roomType.toLowerCase()} room so you end up with people you know.
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[["none", "Just me"], ["create", "Start a group"], ["join", "I have a group code"]].map(([mode, label]) => (
+                        <button key={mode} type="button"
+                          onClick={() => { setGroupMode(mode); setGroupInfo(null); setSendError(""); }}
+                          style={groupMode === mode ? { background: C.blue, color: "#fff", borderColor: C.blue } : { background: C.white, color: C.ink, borderColor: C.border }}
+                          className="border rounded-full px-3 py-1 text-xs font-semibold">
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                    {groupMode === "create" && (
+                      <p style={{ color: C.gray600 }} className="text-xs mt-2">
+                        You'll get a code to share with up to {groupCapacity - 1} friend{groupCapacity - 1 === 1 ? "" : "s"}. The owner sees everyone as one group.
+                      </p>
+                    )}
+                    {groupMode === "join" && (
+                      <div className="mt-2">
+                        <div className="flex gap-2">
+                          <input placeholder="Group code" value={groupCode} maxLength={8}
+                            onChange={(e) => { setGroupCode(e.target.value.toUpperCase()); setGroupInfo(null); }}
+                            style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none flex-1 tracking-widest uppercase" />
+                          <button type="button" onClick={checkGroupCode} disabled={groupChecking}
+                            style={{ borderColor: C.border, color: C.navy }} className="border rounded-md px-3 text-sm font-semibold bg-white disabled:opacity-60">
+                            {groupChecking ? "Checking…" : "Check"}
+                          </button>
+                        </div>
+                        {groupInfo && (
+                          <p style={{ color: C.navy }} className="text-xs mt-2 font-semibold">
+                            ✓ Group found — {groupInfo.joined} of {groupInfo.capacity} beds taken. You'll be #{groupInfo.joined + 1}.
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <textarea rows={3} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
                   style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none resize-none" />
 
@@ -3056,6 +3160,7 @@ function StudentRosterLists({ residents, requests, onToggle }) {
         <p style={{ color: C.ink }} className="text-sm font-semibold flex items-center gap-1.5">
           {s.name}
           {s.confirmedResident && <Badge tone="green">Resident</Badge>}
+          {s.groupCode && <Badge>Group {s.groupCode}</Badge>}
         </p>
         <p style={{ color: C.gray600 }} className="text-xs mt-0.5">
           {s.roomType ? `${s.roomType} · ` : ""}{s.phone || s.email || "No contact provided"}
@@ -3654,6 +3759,7 @@ function PlatformAdminView({ token, onManageOwner }) {
     { key: "name", label: "Name" },
     { key: "listingId", label: "Property", render: (inq) => listingNameById[inq.listingId] || `#${inq.listingId}` },
     { key: "roomType", label: "Room type", render: (inq) => inq.roomType || "—" },
+    { key: "groupCode", label: "Group", render: (inq) => inq.groupCode ? `${inq.groupCode} (of ${inq.groupCapacity})` : "—" },
     { key: "phone", label: "Phone", render: (inq) => inq.phone || "—" },
     { key: "email", label: "Email", render: (inq) => inq.email || "—" },
     { key: "moveIn", label: "Move-in", render: (inq) => inq.moveIn || "—" },
