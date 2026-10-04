@@ -55,6 +55,7 @@ export const api = {
   resetPassword: (token, password) => request("/auth/reset-password", { method: "POST", body: { token, password } }),
   verifyEmail: (token) => request("/auth/verify-email", { method: "POST", body: { token } }),
  sendInquiry: (payload) => request("/inquiries", { method: "POST", body: payload }),
+  getBookingGroup: (code) => request(`/booking-groups/${encodeURIComponent(code)}`),
   getInquiries: (token) => request("/inquiries", { token }),
   setConfirmedResident: (id, confirmed, token) => request(`/inquiries/${id}/confirm`, { method: "PATCH", body: { confirmed }, token }),
   getOwnerStats: (token) => request("/owner/stats", { token }),
