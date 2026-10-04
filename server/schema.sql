@@ -198,3 +198,21 @@ ALTER TABLE listings ADD COLUMN IF NOT EXISTS public_kind TEXT;
 -- before this moment are rejected, so a changed password signs out any session
 -- that was already open on the old one.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS password_changed_at TIMESTAMPTZ;
+
+-- ---------------------------------------------------------
+-- Roommate groups
+-- ---------------------------------------------------------
+-- Lets friends request beds in the same multi-occupancy room together. One
+-- student starts a group (getting a short share code), friends join with that
+-- code, and every member's inquiry carries the group_id so the owner sees them
+-- as one party. capacity is the room's occupancy (Two in a room = 2, etc).
+CREATE TABLE IF NOT EXISTS booking_groups (
+  id SERIAL PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  listing_id INTEGER NOT NULL REFERENCES listings(id) ON DELETE CASCADE,
+  room_type TEXT NOT NULL,
+  capacity INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES booking_groups(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_inquiries_group_id ON inquiries(group_id);
