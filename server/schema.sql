@@ -216,3 +216,12 @@ CREATE TABLE IF NOT EXISTS booking_groups (
 );
 ALTER TABLE inquiries ADD COLUMN IF NOT EXISTS group_id INTEGER REFERENCES booking_groups(id) ON DELETE SET NULL;
 CREATE INDEX IF NOT EXISTS idx_inquiries_group_id ON inquiries(group_id);
+
+-- Secret held only by the student who started the group (kept in their browser).
+-- It lets that student, and only that student, fetch the member list to send one
+-- combined booking request to the owner.
+ALTER TABLE booking_groups ADD COLUMN IF NOT EXISTS leader_token TEXT;
+
+-- How many times the leader has sent the combined request to the owner. Lets the
+-- owner see "UPDATED request #2" when more friends join after the first send.
+ALTER TABLE booking_groups ADD COLUMN IF NOT EXISTS sent_count INTEGER NOT NULL DEFAULT 0;
