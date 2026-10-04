@@ -414,9 +414,9 @@ async getInquiries() {
         try {
           await client.query("SAVEPOINT g");
           const r = await client.query(
-            `INSERT INTO booking_groups (code, listing_id, room_type, capacity)
-             VALUES ($1,$2,$3,$4) RETURNING *`,
-            [this._newGroupCode(), inquiry.listingId, inquiry.roomType, capacity]
+            `INSERT INTO booking_groups (code, listing_id, room_type, capacity, leader_token)
+             VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+            [this._newGroupCode(), inquiry.listingId, inquiry.roomType, capacity, crypto.randomBytes(24).toString("hex")]
           );
           group = r.rows[0];
         } catch (err) {
@@ -433,7 +433,7 @@ async getInquiries() {
       );
       await client.query("COMMIT");
       return { inquiry: mapInquiry({ ...rows[0], group_code: group.code, group_capacity: group.capacity }),
-               group: { code: group.code, capacity: group.capacity, joined: 1, roomType: group.room_type, listingId: group.listing_id } };
+               group: { code: group.code, capacity: group.capacity, joined: 1, roomType: group.room_type, listingId: group.listing_id, leaderToken: group.leader_token } };
     } catch (err) {
       await client.query("ROLLBACK").catch(() => {});
       throw err;
@@ -476,6 +476,53 @@ async getInquiries() {
     } finally {
       client.release();
     }
+  },
+
+  // Member list for the group leader, who sends ONE combined request to the owner.
+  // Returns null if the code or the leader token is wrong (same answer for both, so
+  // a guesser can't tell which part was right).
+  async getGroupForLeader(code, token, markSent = false) {
+    const { rows } = await pool.query("SELECT * FROM booking_groups WHERE code = $1", [code]);
+    const g = rows[0];
+    if (!g || !g.leader_token || typeof token !== "string") return null;
+    const a = Buffer.from(g.leader_token), b = Buffer.from(token);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) return null;
+    const m = await pool.query(
+      "SELECT name, phone, email, move_in FROM inquiries WHERE group_id = $1 ORDER BY id ASC", [g.id]);
+    let sentCount = g.sent_count || 0;
+    if (markSent) {
+      const u = await pool.query("UPDATE booking_groups SET sent_count = sent_count + 1 WHERE id = $1 RETURNING sent_count", [g.id]);
+      sentCount = u.rows[0].sent_count;
+    }
+    return {
+      code: g.code, listingId: g.listing_id, roomType: g.room_type, capacity: g.capacity, sentCount,
+      members: m.rows.map((r) => ({ name: r.name, phone: r.phone, email: r.email, moveIn: r.move_in })),
+    };
+  },
+
+  // Lets the leader get back in from any device: the group code plus the phone number
+  // or email they used when starting the group. Returns the leader token on a match.
+  // Same null answer for a wrong code and wrong contact, so nothing can be probed.
+  async recoverLeader(code, contact) {
+    const { rows } = await pool.query("SELECT * FROM booking_groups WHERE code = $1", [code]);
+    const g = rows[0];
+    if (!g) return null;
+    const first = (await pool.query(
+      "SELECT phone, email FROM inquiries WHERE group_id = $1 ORDER BY id ASC LIMIT 1", [g.id])).rows[0];
+    if (!first) return null;
+    // Compare the last 9 digits so 0241234567, 241234567 and +233241234567 all match.
+    const tail = (v) => String(v || "").replace(/\D/g, "").slice(-9);
+    const phoneOk = tail(contact.phone).length === 9 && tail(contact.phone) === tail(first.phone);
+    const emailOk = !!contact.email && !!first.email &&
+      String(contact.email).trim().toLowerCase() === String(first.email).trim().toLowerCase();
+    if (!phoneOk && !emailOk) return null;
+    let token = g.leader_token;
+    if (!token) { // group created before leader tokens existed
+      token = crypto.randomBytes(24).toString("hex");
+      await pool.query("UPDATE booking_groups SET leader_token = $1 WHERE id = $2", [token, g.id]);
+    }
+    const joined = (await pool.query("SELECT COUNT(*)::int AS n FROM inquiries WHERE group_id = $1", [g.id])).rows[0].n;
+    return { leaderToken: token, group: { code: g.code, listingId: g.listing_id, roomType: g.room_type, capacity: g.capacity, joined } };
   },
 
   // Public, privacy-safe summary of a group: no names or contact details.
