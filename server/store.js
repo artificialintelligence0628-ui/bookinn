@@ -1,3 +1,4 @@
+import crypto from "crypto";
 import { pool } from "./db.js";
 
 // ---------------------------------------------------------
@@ -73,6 +74,9 @@ function mapInquiry(row) {
     roomType: row.room_type,
     createdAt: row.created_at,
     confirmedResident: !!row.confirmed_resident,
+    groupId: row.group_id || null,
+    groupCode: row.group_code || null,
+    groupCapacity: row.group_capacity || null,
   };
 }
 
@@ -376,7 +380,11 @@ export const store = {
     return mapInquiry(rows[0]);
   },
 async getInquiries() {
-    const { rows } = await pool.query("SELECT * FROM inquiries ORDER BY id DESC");
+    const { rows } = await pool.query(
+      `SELECT i.*, g.code AS group_code, g.capacity AS group_capacity
+         FROM inquiries i LEFT JOIN booking_groups g ON g.id = i.group_id
+        ORDER BY i.id DESC`
+    );
     return rows.map(mapInquiry);
   },
   async setConfirmedResident(id, confirmed) {
@@ -385,6 +393,99 @@ async getInquiries() {
       [confirmed, id]
     );
     return mapInquiry(rows[0]);
+  },
+
+  // ---- roommate groups ----
+  // Short, unambiguous share code (no 0/O/1/I) that friends type to join.
+  _newGroupCode() {
+    const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+    let code = "";
+    for (let i = 0; i < 6; i++) code += alphabet[crypto.randomInt(alphabet.length)];
+    return code;
+  },
+
+  // Starts a group and saves the creator's inquiry as its first member, atomically.
+  async createGroupWithInquiry(inquiry, capacity) {
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      let group = null;
+      for (let attempt = 0; attempt < 5 && !group; attempt++) {
+        try {
+          await client.query("SAVEPOINT g");
+          const r = await client.query(
+            `INSERT INTO booking_groups (code, listing_id, room_type, capacity)
+             VALUES ($1,$2,$3,$4) RETURNING *`,
+            [this._newGroupCode(), inquiry.listingId, inquiry.roomType, capacity]
+          );
+          group = r.rows[0];
+        } catch (err) {
+          if (err.code !== "23505") throw err; // code collision — retry
+          await client.query("ROLLBACK TO SAVEPOINT g");
+        }
+      }
+      if (!group) throw new Error("Couldn't create a group code. Please try again.");
+      const { rows } = await client.query(
+        `INSERT INTO inquiries (listing_id, name, phone, email, move_in, message, room_type, group_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [inquiry.listingId, inquiry.name, inquiry.phone || null, inquiry.email || null,
+         inquiry.moveIn || null, inquiry.message || null, inquiry.roomType || null, group.id]
+      );
+      await client.query("COMMIT");
+      return { inquiry: mapInquiry({ ...rows[0], group_code: group.code, group_capacity: group.capacity }),
+               group: { code: group.code, capacity: group.capacity, joined: 1, roomType: group.room_type, listingId: group.listing_id } };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Adds an inquiry to an existing group. The group row is locked while we
+  // count members, so two friends joining the last bed at once can't both get it.
+  async joinGroupWithInquiry(code, inquiry) {
+    const client = await pool.connect();
+    const fail = (status, message) => Object.assign(new Error(message), { status });
+    try {
+      await client.query("BEGIN");
+      const g = await client.query("SELECT * FROM booking_groups WHERE code = $1 FOR UPDATE", [code]);
+      const group = g.rows[0];
+      if (!group) throw fail(404, "We couldn't find that group code. Check it and try again.");
+      if (group.listing_id !== Number(inquiry.listingId) || group.room_type !== inquiry.roomType) {
+        throw fail(400, "That group code is for a different property or room type.");
+      }
+      const members = await client.query("SELECT phone, email FROM inquiries WHERE group_id = $1", [group.id]);
+      if (members.rows.length >= group.capacity) throw fail(409, "This group is already full.");
+      const dup = members.rows.some((m) =>
+        (inquiry.phone && m.phone && m.phone === inquiry.phone) ||
+        (inquiry.email && m.email && m.email.toLowerCase() === String(inquiry.email).toLowerCase()));
+      if (dup) throw fail(409, "You're already in this group.");
+      const { rows } = await client.query(
+        `INSERT INTO inquiries (listing_id, name, phone, email, move_in, message, room_type, group_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *`,
+        [inquiry.listingId, inquiry.name, inquiry.phone || null, inquiry.email || null,
+         inquiry.moveIn || null, inquiry.message || null, inquiry.roomType || null, group.id]
+      );
+      await client.query("COMMIT");
+      return { inquiry: mapInquiry({ ...rows[0], group_code: group.code, group_capacity: group.capacity }),
+               group: { code: group.code, capacity: group.capacity, joined: members.rows.length + 1, roomType: group.room_type, listingId: group.listing_id } };
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  },
+
+  // Public, privacy-safe summary of a group: no names or contact details.
+  async getGroupSummary(code) {
+    const { rows } = await pool.query(
+      `SELECT g.*, (SELECT COUNT(*) FROM inquiries i WHERE i.group_id = g.id)::int AS joined
+         FROM booking_groups g WHERE g.code = $1`, [code]);
+    const g = rows[0];
+    if (!g) return null;
+    return { code: g.code, listingId: g.listing_id, roomType: g.room_type, capacity: g.capacity, joined: g.joined };
   },
 
   // ---- public halls & hostels ----
