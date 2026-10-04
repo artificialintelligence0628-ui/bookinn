@@ -1038,10 +1038,7 @@ function ContactModal({ listing, roomType, onClose, initialGroupCode = "" }) {
                     <PrimaryButton full onClick={sendGroupToOwner} disabled={sendingGroup}>
                       {sendingGroup ? "Opening WhatsApp…" : `Send group request to owner (${groupResult.joined} student${groupResult.joined === 1 ? "" : "s"})`}
                     </PrimaryButton>
-                    <p style={{ color: C.gray600 }} className="text-xs">
-                      You can close this page. Friends who aren't around yet can join any time using the link or code. To come back, open the group link, or choose
-                      "Reopen my group" and enter your code and the phone number or email you used. If more friends join after you've sent the request, just send it again — the owner will see it marked as updated.
-                    </p>
+                   
                     {sendError && <p style={{ color: "#b3261e" }} className="text-xs">{sendError}</p>}
                   </div>
                 )}
