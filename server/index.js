@@ -849,10 +849,53 @@ app.post("/api/listings/:id/reviews", ah(async (req, res) => {
 // ---------------------------------------------------------
 // Inquiries (booking / contact form submissions)
 // ---------------------------------------------------------
+// Beds per room for the hostel categories where friends can share a room. "One in a
+// room" and the apartment types are excluded — there's nobody to pair up with, or
+// the occupancy isn't fixed.
+const GROUP_CAPACITY = { "Two in a room": 2, "Three in a room": 3, "Four in a room": 4, "Six in a room": 6 };
+
+const groupLookupLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 60,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many group lookups. Please wait a few minutes and try again." },
+});
+
+const normalizeGroupCode = (c) => String(c || "").trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+
+// Anyone can check a group code before joining. Returns only the room and how
+// full it is — never member names or contact details.
+app.get("/api/booking-groups/:code", groupLookupLimiter, ah(async (req, res) => {
+  const group = await store.getGroupSummary(normalizeGroupCode(req.params.code));
+  if (!group) return res.status(404).json({ error: "We couldn't find that group code." });
+  res.json({ group });
+}));
+
 app.post("/api/inquiries", ah(async (req, res) => {
-  const { listingId, name, phone, email, moveIn, message, roomType } = req.body || {};
+  const { listingId, name, phone, email, moveIn, message, roomType, group } = req.body || {};
   if (!listingId || !name) return res.status(400).json({ error: "listingId and name are required." });
-  const inquiry = await store.addInquiry({ listingId, name, phone, email, moveIn, message, roomType });
+  const base = { listingId, name, phone, email, moveIn, message, roomType };
+
+  // Optional roommate group: { action: "create" } starts one, { action: "join", code } joins one.
+  if (group && (group.action === "create" || group.action === "join")) {
+    const capacity = GROUP_CAPACITY[roomType];
+    if (!capacity) return res.status(400).json({ error: "Groups are only available for rooms shared by two or more people." });
+    const listing = (await store.getListings()).find((l) => l.id === Number(listingId));
+    if (!listing) return res.status(404).json({ error: "Listing not found." });
+    if (!phone && !email) return res.status(400).json({ error: "Add a phone number or email so your roommates and the owner can reach you." });
+    try {
+      const result = group.action === "create"
+        ? await store.createGroupWithInquiry({ ...base, listingId: listing.id }, capacity)
+        : await store.joinGroupWithInquiry(normalizeGroupCode(group.code), { ...base, listingId: listing.id });
+      return res.status(201).json(result);
+    } catch (err) {
+      if (err.status) return res.status(err.status).json({ error: err.message });
+      throw err;
+    }
+  }
+
+  const inquiry = await store.addInquiry(base);
   res.status(201).json({ inquiry });
 }));
 
