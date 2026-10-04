@@ -56,6 +56,8 @@ export const api = {
   verifyEmail: (token) => request("/auth/verify-email", { method: "POST", body: { token } }),
  sendInquiry: (payload) => request("/inquiries", { method: "POST", body: payload }),
   getBookingGroup: (code) => request(`/booking-groups/${encodeURIComponent(code)}`),
+  getGroupMembers: (code, leaderToken, send = false) => request(`/booking-groups/${encodeURIComponent(code)}/members`, { method: "POST", body: { token: leaderToken, send } }),
+  recoverGroup: (code, contact) => request(`/booking-groups/${encodeURIComponent(code)}/recover`, { method: "POST", body: contact }),
   getInquiries: (token) => request("/inquiries", { token }),
   setConfirmedResident: (id, confirmed, token) => request(`/inquiries/${id}/confirm`, { method: "PATCH", body: { confirmed }, token }),
   getOwnerStats: (token) => request("/owner/stats", { token }),
