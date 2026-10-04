@@ -872,6 +872,31 @@ app.get("/api/booking-groups/:code", groupLookupLimiter, ah(async (req, res) => 
   res.json({ group });
 }));
 
+// Leader-only: returns who is in the group so the leader can send the owner ONE
+// combined request. POST (not GET) so the secret token never appears in a URL/log.
+// Leader got a new phone / cleared their browser? They prove who they are with the
+// group code plus the phone or email they used, which is stricter-limited because it
+// is the one route where someone could try guessing contact details.
+const groupRecoverLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many attempts. Please wait 15 minutes and try again." },
+});
+app.post("/api/booking-groups/:code/recover", groupRecoverLimiter, ah(async (req, res) => {
+  const { phone, email } = req.body || {};
+  const result = await store.recoverLeader(normalizeGroupCode(req.params.code), { phone, email });
+  if (!result) return res.status(403).json({ error: "That code and phone number / email don't match a group you started." });
+  res.json(result);
+}));
+
+app.post("/api/booking-groups/:code/members", groupLookupLimiter, ah(async (req, res) => {
+  const result = await store.getGroupForLeader(normalizeGroupCode(req.params.code), req.body?.token, !!req.body?.send);
+  if (!result) return res.status(403).json({ error: "Only the person who started this group can do that." });
+  res.json({ group: result });
+}));
+
 app.post("/api/inquiries", ah(async (req, res) => {
   const { listingId, name, phone, email, moveIn, message, roomType, group } = req.body || {};
   if (!listingId || !name) return res.status(400).json({ error: "listingId and name are required." });
