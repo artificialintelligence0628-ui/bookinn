@@ -722,7 +722,22 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
    CONTACT / BOOKING MODAL
 --------------------------------------------------------- */
 
-function ContactModal({ listing, roomType, onClose }) {
+// Group leaders keep a secret token in their own browser so they can come back later
+// and send the owner one combined request. Wrapped in try/catch: storage can be
+// blocked (private mode, in-app browsers).
+const SAVED_GROUPS_KEY = "bookinn_groups";
+function loadSavedGroups() {
+  try { return JSON.parse(localStorage.getItem(SAVED_GROUPS_KEY) || "[]"); } catch { return []; }
+}
+function saveGroupLocally(g) {
+  try {
+    const list = loadSavedGroups().filter((x) => x.code !== g.code);
+    list.push(g);
+    localStorage.setItem(SAVED_GROUPS_KEY, JSON.stringify(list.slice(-20)));
+  } catch { /* storage unavailable — leader still sees the code on screen */ }
+}
+
+function ContactModal({ listing, roomType, onClose, initialGroupCode = "" }) {
    const [sent, setSent] = useState(false);
   const [busy, setBusy] = useState(false);
   const [sendError, setSendError] = useState("");
@@ -734,11 +749,46 @@ function ContactModal({ listing, roomType, onClose }) {
   const [groupInfo, setGroupInfo] = useState(null); // verified summary of the code being joined
   const [groupChecking, setGroupChecking] = useState(false);
   const [groupResult, setGroupResult] = useState(null); // group returned by the server after sending
+  const [leaderToken, setLeaderToken] = useState(""); // set only for the student who started the group
+  const [sendingGroup, setSendingGroup] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [reopenContact, setReopenContact] = useState(""); // phone or email used when the group was started
+  const [reopening, setReopening] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [form, setForm] = useState({
     name: "", phone: "", email: "", moveIn: "",
    message: `Hi, I saw ${listing.name}${roomType ? ` (${roomType})` : ""} on BookInn and I'm interested. Is it still available?`,
   });
   const ownerWhatsappDigits = toWhatsappDigits(listing.ownerWhatsapp);
+
+  // Reopen where the student left off. A group this device already knows about
+  // (leader or member) goes straight to its panel; a shared link (?group=CODE) with
+  // no saved copy opens the "join" step with the code filled in and checked.
+  useEffect(() => {
+    const saved = loadSavedGroups().find((g) =>
+      g.listingId === listing.id && g.roomType === roomType && (!initialGroupCode || g.code === initialGroupCode));
+    if (saved) {
+      setLeaderToken(saved.token || "");
+      setGroupMode(saved.token ? "create" : "join");
+      setGroupResult({ code: saved.code, capacity: saved.capacity, joined: 1, roomType, listingId: listing.id });
+      setSent(true);
+      api.getBookingGroup(saved.code)
+        .then(({ group }) => setGroupResult((g) => (g ? { ...g, joined: group.joined, capacity: group.capacity } : g)))
+        .catch(() => {});
+      return;
+    }
+    if (initialGroupCode && GROUP_CAPACITY[roomType]) {
+      setGroupMode("join");
+      setGroupCode(initialGroupCode);
+      api.getBookingGroup(initialGroupCode)
+        .then(({ group }) => {
+          if (group.listingId !== listing.id || group.roomType !== roomType) setSendError("That group code is for a different room.");
+          else if (group.joined >= group.capacity) setSendError("This group is already full.");
+          else setGroupInfo(group);
+        })
+        .catch((err) => setSendError(err.message));
+    }
+  }, [listing.id, roomType, initialGroupCode]);
   const mailLink = listing.ownerEmail ? `mailto:${listing.ownerEmail}?subject=${encodeURIComponent("Inquiry: " + listing.name)}&body=${encodeURIComponent(form.message)}` : null;
 
   // Popups can only be opened synchronously inside a user gesture (the click
@@ -766,10 +816,22 @@ function ContactModal({ listing, roomType, onClose }) {
       const result = await api.sendInquiry(payload);
       const grp = result?.group || null;
       setGroupResult(grp);
+      if (grp) {
+        // Group requests do NOT message the owner one by one. Members just join;
+        // the leader sends a single combined message once everyone is in.
+        if (groupMode === "create" && grp.leaderToken) {
+          setLeaderToken(grp.leaderToken);
+          saveGroupLocally({ code: grp.code, token: grp.leaderToken, listingId: listing.id, roomType, capacity: grp.capacity });
+        }
+        if (groupMode === "join") {
+          saveGroupLocally({ code: grp.code, token: "", listingId: listing.id, roomType, capacity: grp.capacity });
+        }
+        setSent(true);
+        return;
+      }
       if (ownerWhatsappDigits) {
         const summary = [
           `New BookInn booking request for ${listing.name}${roomType ? ` — ${roomType}` : ""}`,
-          grp ? `Roommate group ${grp.code}: ${grp.joined} of ${grp.capacity} beds requested together` : null,
           `Name: ${form.name}`,
           form.phone ? `Phone: ${form.phone}` : null,
           form.email ? `Email: ${form.email}` : null,
@@ -820,13 +882,95 @@ function ContactModal({ listing, roomType, onClose }) {
     }
   };
 
+  // Leader on a new phone / cleared browser: code + the phone or email they used.
+  const reopenGroup = async () => {
+    setSendError("");
+    if (!groupCode.trim() || !reopenContact.trim()) { setSendError("Enter your group code and the phone number or email you used."); return; }
+    setReopening(true);
+    try {
+      const isEmail = reopenContact.includes("@");
+      const { leaderToken: token, group } = await api.recoverGroup(
+        groupCode.trim(), isEmail ? { email: reopenContact.trim() } : { phone: reopenContact.trim() });
+      if (group.listingId !== listing.id || group.roomType !== roomType) {
+        setSendError("That group is for a different room. Open that room's listing and try again.");
+        return;
+      }
+      saveGroupLocally({ code: group.code, token, listingId: listing.id, roomType, capacity: group.capacity });
+      setLeaderToken(token);
+      setGroupResult({ code: group.code, capacity: group.capacity, joined: group.joined, roomType, listingId: listing.id });
+      setGroupMode("create");
+      setSent(true);
+    } catch (err) {
+      setSendError(err.message);
+    } finally {
+      setReopening(false);
+    }
+  };
+
+  // Re-reads how many students have joined so the leader knows when everyone is in.
+  const refreshGroup = async () => {
+    if (!groupResult) return;
+    setSendError("");
+    setRefreshing(true);
+    try {
+      const { group } = await api.getBookingGroup(groupResult.code);
+      setGroupResult((g) => ({ ...g, joined: group.joined, capacity: group.capacity }));
+    } catch (err) {
+      setSendError(err.message);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
+  // The leader sends the owner ONE WhatsApp message listing every student in the
+  // group, so the owner sees a single clear request instead of several separate ones.
+  const sendGroupToOwner = async () => {
+    if (!ownerWhatsappDigits) { setSendError("This owner hasn't added a WhatsApp number yet."); return; }
+    setSendError("");
+    setSendingGroup(true);
+    // Same popup-blocker approach as the single-request flow above.
+    const waTab = !isMobile ? window.open("", "_blank") : null;
+    try {
+      const { group } = await api.getGroupMembers(groupResult.code, leaderToken, true);
+      setGroupResult((g) => ({ ...g, joined: group.members.length, capacity: group.capacity }));
+      const lines = group.members.map((m, i) =>
+        `${i + 1}. ${m.name}${i === 0 ? " (group leader)" : ""}${m.phone ? ` — ${m.phone}` : ""}${m.email ? ` — ${m.email}` : ""}`);
+      const moveIns = [...new Set(group.members.map((m) => m.moveIn).filter(Boolean))];
+      const text = [
+        group.sentCount > 1
+          ? `UPDATED BookInn GROUP booking request (#${group.sentCount}) for ${listing.name} — ${roomType}`
+          : `New BookInn GROUP booking request for ${listing.name} — ${roomType}`,
+        group.sentCount > 1 ? "This replaces my earlier message — more students have joined." : null,
+        `Group ${group.code}: ${group.members.length} of ${group.capacity} students want to share one room`,
+        "",
+        ...lines,
+        "",
+        moveIns.length ? `Move-in: ${moveIns.join(", ")}` : null,
+        "Please place these students together.",
+      ].filter((x) => x !== null).join("\n");
+      const link = `https://wa.me/${ownerWhatsappDigits}?text=${encodeURIComponent(text)}`;
+      setSentWaLink(link);
+      if (isMobile) window.location.href = link;
+      else if (waTab && !waTab.closed) waTab.location.href = link;
+      else window.open(link, "_blank", "noopener,noreferrer");
+    } catch (err) {
+      if (waTab) waTab.close();
+      setSendError(err.message);
+    } finally {
+      setSendingGroup(false);
+    }
+  };
+
+  const groupLinkUrl = groupResult ? `${window.location.origin}/?group=${groupResult.code}` : "";
   const groupShareLink = groupResult
     ? `https://wa.me/?text=${encodeURIComponent(
-        `Join my room group on BookInn! ${listing.name} — ${roomType}. ` +
-        `Open ${window.location.origin}, find "${listing.name}", choose "${roomType}", tap Contact, ` +
-        `pick "I have a group code" and enter: ${groupResult.code}`
+        `Join my room group on BookInn! ${listing.name} — ${roomType}.\nTap to join: ${groupLinkUrl}\n(Group code: ${groupResult.code})`
       )}`
     : "";
+  const copyGroupLink = async () => {
+    try { await navigator.clipboard.writeText(groupLinkUrl); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch { setSendError(`Copy this link: ${groupLinkUrl}`); }
+  };
 
   const sendRequest = () => {
     if (!form.name) { setSendError("Enter your name so the property manager knows who's asking."); return; }
@@ -839,7 +983,7 @@ function ContactModal({ listing, roomType, onClose }) {
     // browser's popup blocker treats it as user-initiated. It sits on
     // about:blank until submitBookingRequest redirects it later.
     // Skipped on mobile — see the comment above.
-    const waTab = (ownerWhatsappDigits && !isMobile) ? window.open("", "_blank") : null;
+    const waTab = (ownerWhatsappDigits && !isMobile && groupMode === "none") ? window.open("", "_blank") : null;
     submitBookingRequest(waTab);
   };
   return (
@@ -853,22 +997,53 @@ function ContactModal({ listing, roomType, onClose }) {
           <div style={{ background: C.blueLight }} className="rounded-md p-4 text-center">
             <Check className="mx-auto mb-2" color={C.navy} />
             <p style={{ color: C.navy }} className="font-semibold text-sm">
-              Inquiry sent — we've also opened WhatsApp with your details ready to send to the owner.
+              {leaderToken
+                ? "Your group is ready. Once your friends have joined with your code, send ONE combined request to the owner."
+                : groupResult
+                  ? `You've joined group ${groupResult.code}. The group leader will send one combined request to the owner for all of you.`
+                  : "Inquiry sent — we've also opened WhatsApp with your details ready to send to the owner."}
             </p>
             {groupResult && (
               <div style={{ background: C.white, borderColor: C.border }} className="border rounded-md p-3 mt-3 text-left">
-                <p style={{ color: C.gray600 }} className="text-xs">Your group code</p>
+                <p style={{ color: C.gray600 }} className="text-xs">Group code</p>
                 <p style={{ color: C.navy }} className="text-2xl font-extrabold tracking-widest">{groupResult.code}</p>
                 <p style={{ color: C.gray600 }} className="text-xs mt-1">
-                  {groupResult.joined} of {groupResult.capacity} beds requested.
-                  {groupResult.joined < groupResult.capacity ? " Share this code with the friends you want in the room." : " Your group is full."}
+                  {groupResult.joined} of {groupResult.capacity} students have joined.
+                  {groupResult.joined >= groupResult.capacity ? " The group is full." : ""}
                 </p>
-                {groupResult.joined < groupResult.capacity && (
-                  <a href={groupShareLink} target="_blank" rel="noopener noreferrer"
-                    style={{ borderColor: C.border, color: C.navy }}
-                    className="mt-2 border text-sm font-semibold py-2 rounded-md flex items-center justify-center gap-1.5">
-                    <MessageCircle size={16} /> Share code on WhatsApp
-                  </a>
+                {!leaderToken && (
+                  <p style={{ color: C.gray600 }} className="text-xs mt-2">
+                    Come back to this room's page any time to see who has joined. Your group leader sends the combined request to the owner.
+                  </p>
+                )}
+                {leaderToken && (
+                  <div className="flex flex-col gap-2 mt-3">
+                    {groupResult.joined < groupResult.capacity && (
+                      <a href={groupShareLink} target="_blank" rel="noopener noreferrer"
+                        style={{ borderColor: C.border, color: C.navy }}
+                        className="border text-sm font-semibold py-2 rounded-md flex items-center justify-center gap-1.5">
+                        <MessageCircle size={16} /> Share code with friends
+                      </a>
+                    )}
+                    <button type="button" onClick={copyGroupLink}
+                      style={{ borderColor: C.border, color: C.navy }}
+                      className="border text-sm font-semibold py-2 rounded-md bg-white flex items-center justify-center gap-1.5">
+                      {copied ? "Link copied ✓" : "Copy group link"}
+                    </button>
+                    <button type="button" onClick={refreshGroup} disabled={refreshing}
+                      style={{ borderColor: C.border, color: C.navy }}
+                      className="border text-sm font-semibold py-2 rounded-md bg-white disabled:opacity-60 flex items-center justify-center gap-1.5">
+                      <RefreshCw size={14} className={refreshing ? "animate-spin" : ""} /> Check who has joined
+                    </button>
+                    <PrimaryButton full onClick={sendGroupToOwner} disabled={sendingGroup}>
+                      {sendingGroup ? "Opening WhatsApp…" : `Send group request to owner (${groupResult.joined} student${groupResult.joined === 1 ? "" : "s"})`}
+                    </PrimaryButton>
+                    <p style={{ color: C.gray600 }} className="text-xs">
+                      You can close this page. Friends who aren't around yet can join any time using the link or code. To come back, open the group link, or choose
+                      "Reopen my group" and enter your code and the phone number or email you used. If more friends join after you've sent the request, just send it again — the owner will see it marked as updated.
+                    </p>
+                    {sendError && <p style={{ color: "#b3261e" }} className="text-xs">{sendError}</p>}
+                  </div>
                 )}
               </div>
             )}
@@ -880,7 +1055,7 @@ function ContactModal({ listing, roomType, onClose }) {
                 style={{ background: C.blue }}
                 className="mt-3 inline-flex items-center justify-center gap-1.5 text-white text-sm font-semibold py-2 px-4 rounded-md"
               >
-                <MessageCircle size={16} /> WhatsApp didn't open? Tap here
+                <MessageCircle size={16} /> {leaderToken ? "WhatsApp didn't open? Tap here to message the owner" : "WhatsApp didn't open? Tap here"}
               </a>
             )}
           </div>
@@ -896,9 +1071,16 @@ function ContactModal({ listing, roomType, onClose }) {
 
             <div style={{ borderColor: C.border }} className="border-t pt-4">
               <p style={{ color: C.gray600 }} className="text-xs mb-3">
-                Send your request — it goes straight to the owner's WhatsApp automatically.
+                {groupMode === "none"
+                  ? "Send your request — it goes straight to the owner's WhatsApp automatically."
+                  : groupMode === "create"
+                    ? "Create your group first. After your friends join, you'll send the owner one combined request."
+                    : groupMode === "join"
+                      ? "Join your friend's group. Your group leader will message the owner for all of you."
+                      : "Get back into a group you started."}
               </p>
               <div className="flex flex-col gap-2.5">
+                {groupMode !== "reopen" && (<>
                 <input placeholder="Full name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })}
                   style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none focus:ring-2" />
                 <input placeholder="Phone number" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })}
@@ -907,6 +1089,7 @@ function ContactModal({ listing, roomType, onClose }) {
                   style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
                 <input type="date" value={form.moveIn} onChange={(e) => setForm({ ...form, moveIn: e.target.value })}
                   style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+                </>)}
                 {groupCapacity > 0 && (
                   <div style={{ borderColor: C.border, background: C.blueLight }} className="border rounded-md p-3">
                     <p style={{ color: C.ink }} className="text-sm font-semibold mb-0.5">Booking with friends?</p>
@@ -914,7 +1097,7 @@ function ContactModal({ listing, roomType, onClose }) {
                       Request beds together in this {roomType.toLowerCase()} room so you end up with people you know.
                     </p>
                     <div className="flex flex-wrap gap-1.5">
-                      {[["none", "Just me"], ["create", "Start a group"], ["join", "I have a group code"]].map(([mode, label]) => (
+                      {[["none", "Just me"], ["create", "Start a group"], ["join", "I have a group code"], ["reopen", "Reopen my group"]].map(([mode, label]) => (
                         <button key={mode} type="button"
                           onClick={() => { setGroupMode(mode); setGroupInfo(null); setSendError(""); }}
                           style={groupMode === mode ? { background: C.blue, color: "#fff", borderColor: C.blue } : { background: C.white, color: C.ink, borderColor: C.border }}
@@ -925,8 +1108,24 @@ function ContactModal({ listing, roomType, onClose }) {
                     </div>
                     {groupMode === "create" && (
                       <p style={{ color: C.gray600 }} className="text-xs mt-2">
-                        You'll get a code to share with up to {groupCapacity - 1} friend{groupCapacity - 1 === 1 ? "" : "s"}. The owner sees everyone as one group.
+                        You'll get a code to share with up to {groupCapacity - 1} friend{groupCapacity - 1 === 1 ? "" : "s"}. When they've joined, you send the owner ONE message listing everyone.
                       </p>
+                    )}
+                    {groupMode === "reopen" && (
+                      <div className="mt-2 flex flex-col gap-2">
+                        <p style={{ color: C.gray600 }} className="text-xs">
+                          Started a group earlier? Enter your code and the phone number or email you used, and you can send the owner the combined request.
+                        </p>
+                        <input placeholder="Group code" value={groupCode} maxLength={8}
+                          onChange={(e) => setGroupCode(e.target.value.toUpperCase())}
+                          style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none tracking-widest uppercase" />
+                        <input placeholder="Your phone number or email" value={reopenContact}
+                          onChange={(e) => setReopenContact(e.target.value)}
+                          style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+                        <PrimaryButton full onClick={reopenGroup} disabled={reopening}>
+                          {reopening ? "Checking…" : "Reopen my group"}
+                        </PrimaryButton>
+                      </div>
                     )}
                     {groupMode === "join" && (
                       <div className="mt-2">
@@ -948,15 +1147,19 @@ function ContactModal({ listing, roomType, onClose }) {
                     )}
                   </div>
                 )}
-                <textarea rows={3} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
-                  style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none resize-none" />
+                {groupMode !== "reopen" && (
+                  <textarea rows={3} value={form.message} onChange={(e) => setForm({ ...form, message: e.target.value })}
+                    style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none resize-none" />
+                )}
 
                 {sendError && (
                   <p style={{ color: "#b3261e" }} className="text-xs">{sendError}</p>
                 )}
-                <PrimaryButton full onClick={sendRequest} disabled={busy}>
-                  {busy ? "Sending…" : "Send request & continue to WhatsApp"}
-                </PrimaryButton>
+                {groupMode !== "reopen" && (
+                  <PrimaryButton full onClick={sendRequest} disabled={busy}>
+                    {busy ? "Sending…" : groupMode === "none" ? "Send request & continue to WhatsApp" : groupMode === "create" ? "Create group" : "Join group"}
+                  </PrimaryButton>
+                )}
               </div>
             </div>
           </>
@@ -1023,19 +1226,19 @@ function ReviewForm({ listingId, onSubmitted }) {
   );
 }
 
-  function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded, user, onRequireAuth }) {
-  const [showContact, setShowContact] = useState(false);
+  function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded, user, onRequireAuth, groupLink = null }) {
+  const [showContact, setShowContact] = useState(!!groupLink); // a shared ?group= link opens the booking form straight away
   const [activeImg, setActiveImg] = useState(0);
   const [walkStep, setWalkStep] = useState(0);
   const roomOptions = listing.roomOptions?.length ? listing.roomOptions : [{ roomType: listing.roomType, price: listing.price }];
-  const [selectedRoom, setSelectedRoom] = useState(roomOptions[0]?.roomType || "");
+  const [selectedRoom, setSelectedRoom] = useState(groupLink?.roomType || roomOptions[0]?.roomType || "");
   const galleryImages = [listing.image, ...(listing.images || [])].filter(Boolean);
   const walkthroughStops = listing.virtualWalkthrough ? (listing.walkthrough || []) : [];
 
   React.useEffect(() => {
     setActiveImg(0);
     setWalkStep(0);
-    setSelectedRoom(roomOptions[0]?.roomType || "");
+    setSelectedRoom(groupLink?.roomType || roomOptions[0]?.roomType || "");
     api.recordView(listing.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [listing.id]);
@@ -1252,7 +1455,7 @@ function ReviewForm({ listingId, onSubmitted }) {
         </div>
       </div>
 
-      {showContact && <ContactModal listing={listing} roomType={selectedRoom} onClose={() => setShowContact(false)} />}
+      {showContact && <ContactModal listing={listing} roomType={selectedRoom} initialGroupCode={groupLink?.code || ""} onClose={() => setShowContact(false)} />}
     </div>
   );
 }
@@ -4260,6 +4463,9 @@ export default function App() {
   }, []);
 
   const [selectedListing, setSelectedListing] = useState(null);
+  // A shared group link (/?group=CODE) takes the student straight to that room's
+  // booking form with the code filled in — also how a leader returns to their group.
+  const [groupLink, setGroupLink] = useState(null);
   const [favorites, setFavorites] = useState(new Set());
   const [mobileOpen, setMobileOpen] = useState(false);
   const [listings, setListings] = useState([]);
@@ -4341,6 +4547,25 @@ export default function App() {
       .finally(() => setListingsLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [view, studentUniversity]);
+
+  React.useEffect(() => {
+    const code = new URLSearchParams(window.location.search).get("group");
+    if (!code) return;
+    const clean = code.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+    if (!clean) return;
+    (async () => {
+      try {
+        const { group } = await api.getBookingGroup(clean);
+        const { listings: all } = await api.getListings();
+        const target = all.find((l) => l.id === group.listingId);
+        if (!target) return;
+        setSelectedListing(target);
+        setGroupLink({ code: group.code, roomType: group.roomType });
+        setViewState("detail");
+        window.history.replaceState({ view: "detail" }, "", "/");
+      } catch { /* bad or expired link — just land on the homepage */ }
+    })();
+  }, []);
 
   // Restore a saved session (if any) and verify it's still valid.
   React.useEffect(() => {
@@ -4529,7 +4754,8 @@ export default function App() {
         )}
        {view === "detail" && selectedListing && (
           <DetailView
-            listing={selectedListing} onBack={() => setView("home")} isFav={favorites.has(selectedListing.id)} toggleFav={toggleFav}
+            key={`${selectedListing.id}-${groupLink?.code || ""}`} groupLink={groupLink}
+            listing={selectedListing} onBack={() => { setGroupLink(null); setView("home"); }} isFav={favorites.has(selectedListing.id)} toggleFav={toggleFav}
             onReviewAdded={(updated) => {
               setSelectedListing(updated);
               setListings((prev) => prev.map((x) => (x.id === updated.id ? updated : x)));
