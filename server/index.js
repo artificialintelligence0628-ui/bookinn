@@ -759,6 +759,22 @@ app.get("/api/listings/mine", requireAuth, ah(async (req, res) => {
   res.json({ listings, subscriptionView: view, maxListings: Number.isFinite(limit) ? limit : null });
 }));
 
+// Reads an optional map pin from a request body. Returns {} when the body says
+// nothing about a location (so an older client can't wipe a saved pin by
+// accident), { lat: null, lng: null } to clear it, or { lat, lng } to set it.
+function parseCoords(body) {
+  const has = (v) => v !== null && v !== undefined && v !== "";
+  if (body.lat === undefined && body.lng === undefined) return {};
+  if (!has(body.lat) && !has(body.lng)) return { lat: null, lng: null };
+  const lat = Number(body.lat);
+  const lng = Number(body.lng);
+  if (!has(body.lat) || !has(body.lng) || !Number.isFinite(lat) || !Number.isFinite(lng)
+      || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
+    return { error: "That map location isn't valid. Tap the map again to place the pin." };
+  }
+  return { lat: Math.round(lat * 1e6) / 1e6, lng: Math.round(lng * 1e6) / 1e6 };
+}
+
 app.post("/api/listings", requireAuth, requireCanCreateListing, ah(async (req, res) => {
   const l = req.body || {};
   const type = l.type === "Apartment" ? "Apartment" : "Hostel";
@@ -776,6 +792,8 @@ app.post("/api/listings", requireAuth, requireCanCreateListing, ah(async (req, r
   }
   const planCheck = enforcePlanOnListingPayload(req.subscriptionView, l);
   if (planCheck.error) return res.status(400).json({ error: planCheck.error });
+  const coords = parseCoords(l);
+  if (coords.error) return res.status(400).json({ error: coords.error });
   const listing = await store.addListing({
     ownerId: req.user.sub,
     name: l.name,
@@ -802,6 +820,8 @@ app.post("/api/listings", requireAuth, requireCanCreateListing, ah(async (req, r
     ownerWhatsapp: l.ownerWhatsapp || "",
     availability: ["Space available", "Partly booked", "Fully booked"].includes(l.availability) ? l.availability : "Space available",
     reviews: [],
+    lat: coords.lat ?? null,
+    lng: coords.lng ?? null,
   });
   const updatedUser = await store.getUserById(req.user.sub);
   res.status(201).json({ listing, user: publicUser(updatedUser) });
@@ -825,7 +845,10 @@ app.put("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing
   }
   const planCheck = enforcePlanOnListingPayload(req.subscriptionView, l);
   if (planCheck.error) return res.status(400).json({ error: planCheck.error });
+  const coords = parseCoords(l);
+  if (coords.error) return res.status(400).json({ error: coords.error });
   const patch = {
+    ...coords,
     name: l.name,
     type,
     roomOptions: rooms.roomOptions,
@@ -1233,8 +1256,11 @@ function buildPublicListingFields(l) {
   }
   const planCheck = enforcePlanOnListingPayload({ features: FULL_FEATURES }, l);
   if (planCheck.error) return { error: planCheck.error };
+  const coords = parseCoords(l);
+  if (coords.error) return { error: coords.error };
   return {
     fields: {
+      ...coords,
       name: String(l.name).trim(),
       type,
       publicKind: l.publicKind === "Hall" ? "Hall" : "Hostel",
