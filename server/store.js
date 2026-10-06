@@ -50,6 +50,8 @@ function mapListing(row) {
     amenities: row.amenities,
     desc: row.desc,
     locationDescription: row.location_description,
+    lat: row.lat == null ? null : Number(row.lat),
+    lng: row.lng == null ? null : Number(row.lng),
     ownerEmail: row.owner_email,
     ownerWhatsapp: row.owner_whatsapp,
     availability: row.availability,
@@ -99,6 +101,7 @@ const LISTING_COLUMNS = {
   amenities: "amenities", desc: '"desc"', locationDescription: "location_description",
   ownerEmail: "owner_email", ownerWhatsapp: "owner_whatsapp",
   availability: "availability", reviews: "reviews", views: "views", publicKind: "public_kind",
+  lat: "lat", lng: "lng",
 };
 const JSONB_LISTING_FIELDS = new Set(["roomOptions", "images", "walkthrough", "amenities", "reviews", "views"]);
 
@@ -131,8 +134,8 @@ export const store = {
         (owner_id, name, type, room_options, room_type, price, bath, kitchen, university,
          distance, pricing_period, rating, review_count, featured, image, images, video,
         walkthrough, amenities, "desc", location_description, owner_email, owner_whatsapp,
-         availability, reviews, views, is_public, public_kind)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28)
+         availability, reviews, views, is_public, public_kind, lat, lng)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
        RETURNING *`,
       [
         listing.ownerId, listing.name, listing.type,
@@ -145,6 +148,7 @@ export const store = {
         listing.locationDescription || "", listing.ownerEmail || "",
         listing.ownerWhatsapp || "", listing.availability, JSON.stringify(listing.reviews || []),
         JSON.stringify([]), !!listing.isPublic, listing.isPublic ? (listing.publicKind === "Hall" ? "Hall" : "Hostel") : null,
+        listing.lat ?? null, listing.lng ?? null,
       ]
     );
     return mapListing(rows[0]);
