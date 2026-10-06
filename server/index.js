@@ -8,6 +8,7 @@ import jwt from "jsonwebtoken";
 import { OAuth2Client } from "google-auth-library";
 import multer from "multer";
 import path from "path";
+import fs from "fs";
 import { fileURLToPath } from "url";
 import { store } from "./store.js";
 import { migrate } from "./db.js";
@@ -709,6 +710,28 @@ app.get("/api/listings", ah(async (req, res) => {
     listings = listings.filter((l) => l.university === req.query.university);
   }
   res.json({ listings });
+}));
+
+// One public listing by id — powers shareable links like bookinngh.com/listing/12-bae-dream.
+// Applies the exact same visibility rules as the main feed: a paused/expired owner's
+// listing is NOT reachable by link either.
+async function findPublicListing(id) {
+  const listing = await store.getListingById(id);
+  if (!listing) return null;
+  const owner = await store.getUserById(listing.ownerId);
+  if (!listing.isPublic) {
+    if (!owner) return null;
+    const ownerListings = await store.getListingsByOwner(listing.ownerId);
+    if (!visibleListingIdsForOwner(owner, ownerListings).has(listing.id)) return null;
+  }
+  return toPublicListing(listing, owner);
+}
+
+app.get("/api/listings/:id", ah(async (req, res, next) => {
+  if (!/^\d+$/.test(req.params.id)) return next(); // lets /api/listings/mine fall through to its own route
+  const listing = await findPublicListing(Number(req.params.id));
+  if (!listing) return res.status(404).json({ error: "This listing is no longer available." });
+  res.json({ listing });
 }));
 
 // Owner's own listings — unfiltered (includes a paused/expired listing so the
@@ -1702,6 +1725,53 @@ app.get("/api/health", (req, res) => res.json({ ok: true }));
 // in local dev, Vite's own dev server handles the frontend instead.
 const distPath = path.join(__dirname, "..", "dist");
 app.use(express.static(distPath));
+
+// Link previews. The site is a single-page app, so WhatsApp/Facebook/Google only ever
+// see the generic homepage tags. For /listing/<id>[-slug] we fill in that property's own
+// title, description and photo so a pasted link shows a proper preview card.
+const escHtml = (v) => String(v ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+const SITE_URL = process.env.FRONTEND_URL || "https://bookinngh.com";
+let indexHtmlCache = null;
+function readIndexHtml() {
+  if (indexHtmlCache) return indexHtmlCache;
+  indexHtmlCache = fs.readFileSync(path.join(distPath, "index.html"), "utf8");
+  return indexHtmlCache;
+}
+app.get(/^\/listing\/(\d+)(?:-[^/]*)?\/?$/, ah(async (req, res, next) => {
+  let html;
+  try { html = readIndexHtml(); } catch { return next(); } // no build yet (local dev)
+  const id = Number(req.params[0]);
+  let listing = null;
+  try { listing = await findPublicListing(id); } catch { /* fall back to the plain page */ }
+  if (!listing) return res.type("html").send(html);
+
+  const title = `${listing.name} — ${listing.university} | BookInn`;
+  const rooms = Array.isArray(listing.roomOptions) && listing.roomOptions.length
+    ? `From GH₵${Math.min(...listing.roomOptions.map((r) => Number(r.price) || listing.price))}`
+    : `GH₵${listing.price}`;
+  const descRaw = `${rooms} · ${listing.type} near ${listing.university}. ${listing.desc || ""}`.replace(/\s+/g, " ").trim();
+  const description = descRaw.length > 200 ? descRaw.slice(0, 197) + "…" : descRaw;
+  const image = [listing.image, ...(listing.images || [])].find((u) => typeof u === "string" && /^https:\/\//.test(u)) || "";
+  const url = `${SITE_URL}/listing/${listing.id}`;
+  const tags = [
+    `<meta property="og:type" content="website" />`,
+    `<meta property="og:site_name" content="BookInn" />`,
+    `<meta property="og:title" content="${escHtml(title)}" />`,
+    `<meta property="og:description" content="${escHtml(description)}" />`,
+    `<meta property="og:url" content="${escHtml(url)}" />`,
+    image ? `<meta property="og:image" content="${escHtml(image)}" />` : "",
+    `<meta name="twitter:card" content="${image ? "summary_large_image" : "summary"}" />`,
+    `<link rel="canonical" href="${escHtml(url)}" />`,
+  ].filter(Boolean).join("\n    ");
+
+  const out = html
+    // Function replacers on purpose: a listing description containing "$&" or "$1" must not be treated as a replace pattern.
+    .replace(/<title>[\s\S]*?<\/title>/, () => `<title>${escHtml(title)}</title>`)
+    .replace(/<meta name="description"[^>]*>/, () => `<meta name="description" content="${escHtml(description)}" />`)
+    .replace("</head>", () => `    ${tags}\n  </head>`);
+  res.type("html").send(out);
+}));
+
 app.get(/^(?!\/api).*/, (req, res, next) => {
   res.sendFile(path.join(distPath, "index.html"), (err) => {
     if (err) next(); // dist/ doesn't exist yet (e.g. local dev without a build) — fall through
