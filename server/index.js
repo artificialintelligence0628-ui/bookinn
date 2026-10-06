@@ -346,8 +346,10 @@ const passwordResetLimiter = rateLimit({
 // Auth
 // ---------------------------------------------------------
 app.post("/api/auth/signup", signupLimiter, ah(async (req, res) => {
-  const { name, email, password, role, university } = req.body || {};
+  const { name, email, password, role, university, acceptedTerms, marketingEmails } = req.body || {};
   if (!name || !email || !password) return res.status(400).json({ error: "Name, email and password are required." });
+  // Consent is enforced here too, not just in the form: creating an account requires agreeing to the Terms and Privacy Policy.
+  if (acceptedTerms !== true) return res.status(400).json({ error: "Please agree to the Terms & Conditions and Privacy Policy to create an account." });
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return res.status(400).json({ error: "Enter a valid email address." });
   if (password.length < 8) return res.status(400).json({ error: "Password must be at least 8 characters." });
   if (role && !ROLES.includes(role)) return res.status(400).json({ error: "Invalid account type." });
@@ -367,6 +369,7 @@ app.post("/api/auth/signup", signupLimiter, ah(async (req, res) => {
   const user = await store.addUser({
     name, email, passwordHash, role,
     university: resolvedRole === "Student" ? university : null,
+    marketingEmails: marketingEmails === true, // opt-in only — never assumed
   });
 
   // Sends a "confirm your email" link. A failure here (e.g. Resend not yet
@@ -480,7 +483,7 @@ app.post("/api/auth/login", loginLimiter, ah(async (req, res) => {
 //  - Admin accounts never sign in this way — they use the admin login page.
 app.post("/api/auth/google", googleAuthLimiter, ah(async (req, res) => {
   if (!googleClient) return res.status(503).json({ error: "Google sign-in isn't available right now." });
-  const { credential, role, university } = req.body || {};
+  const { credential, role, university, acceptedTerms, marketingEmails } = req.body || {};
   if (!credential || typeof credential !== "string") return res.status(400).json({ error: "Missing Google credential." });
 
   let payload;
@@ -516,12 +519,16 @@ app.post("/api/auth/google", googleAuthLimiter, ah(async (req, res) => {
     return res.json({ status: "needs_signup", name: displayName, email });
   }
 
+  // Creating a brand-new account requires agreeing to the Terms and Privacy Policy.
+  if (acceptedTerms !== true) return res.status(400).json({ error: "Please agree to the Terms & Conditions and Privacy Policy to create an account." });
+
   // No password was chosen, so store a random hash nobody knows — they can
   // always set a real one later with "Forgot password?".
   const passwordHash = await bcrypt.hash(crypto.randomBytes(32).toString("hex"), 10);
   user = await store.addUser({
     name: displayName, email, passwordHash, role,
     university: role === "Student" ? university : null,
+    marketingEmails: marketingEmails === true,
   });
   user = await store.markEmailVerified(user.id);
   res.status(201).json({ status: "ok", token: signToken(user), user: publicUser(user) });
