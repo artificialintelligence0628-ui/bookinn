@@ -13,7 +13,7 @@ import {
   Eye, EyeOff, Pencil, Trash2, BadgeCheck, ImagePlus, Flame, Gauge,
   ChevronDown, AlertTriangle, Lock, CreditCard, HelpCircle,
   Shirt, Table2, Armchair, Fan, Copy, Compass, BookOpen, Dumbbell,
-  GraduationCap, UserCog, Inbox, Shield, RefreshCw, Wallet, Clock, LogOut, Briefcase
+  GraduationCap, UserCog, Inbox, Shield, RefreshCw, Wallet, Clock, LogOut, Briefcase, Share2
 } from "lucide-react";
 
 /* ---------------------------------------------------------
@@ -1238,6 +1238,38 @@ function ReviewForm({ listingId, onSubmitted }) {
   );
 }
 
+/* Share button: opens the phone's share sheet (WhatsApp etc.) or copies the property's link. */
+function ShareLinkButton({ listing, className = "", iconSize = 16 }) {
+  const [msg, setMsg] = useState("");
+  const onClick = async () => {
+    const r = await shareListingLink(listing);
+    if (r === "copied") { setMsg("Link copied"); setTimeout(() => setMsg(""), 2000); }
+  };
+  return (
+    <span className="relative inline-flex">
+      <button type="button" onClick={onClick} style={{ borderColor: C.border }} className={className} title="Share link" aria-label={`Share link to ${listing.name}`}>
+        <Share2 size={iconSize} color={C.gray600} />
+      </button>
+      {msg && <span style={{ background: C.ink, color: "#fff" }} className="absolute top-full mt-1 right-0 text-xs rounded px-2 py-1 whitespace-nowrap z-10">{msg}</span>}
+    </span>
+  );
+}
+
+// Shown while a shared property link is loading, or when it can't be opened.
+function DeepLinkNotice({ status, onBrowse }) {
+  const text = {
+    loading: "Loading property…",
+    notfound: "This property is no longer available, or the link is wrong.",
+    restricted: "This property is for a different university than the one on your account.",
+  }[status] || "";
+  return (
+    <div className="max-w-xl mx-auto px-4 py-20 text-center">
+      <p style={{ color: C.gray600 }} className="text-sm mb-4">{text}</p>
+      {status !== "loading" && <PrimaryButton onClick={onBrowse}>Browse stays</PrimaryButton>}
+    </div>
+  );
+}
+
   function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded, user, onRequireAuth, groupLink = null }) {
   const [showContact, setShowContact] = useState(!!groupLink); // a shared ?group= link opens the booking form straight away
   const [activeImg, setActiveImg] = useState(0);
@@ -1270,6 +1302,7 @@ function ReviewForm({ listingId, onSubmitted }) {
         </div>
         <div className="flex items-center gap-3">
           <ScoreBadge score={listing.rating} />
+          <ShareLinkButton listing={listing} className="border w-10 h-10 rounded-md flex items-center justify-center" iconSize={18} />
           <button onClick={() => toggleFav(listing.id)} style={{ borderColor: C.border }} className="border w-10 h-10 rounded-md flex items-center justify-center" aria-label={isFav ? "Remove from saved" : "Save this listing"}>
             <Heart size={18} color={isFav ? C.blue : C.gray400} fill={isFav ? C.blue : "none"} />
           </button>
@@ -2389,6 +2422,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
               </button>
               )}
               {publicMode && <span className="flex-1" />}
+              <ShareLinkButton listing={l} className="border rounded-md w-11 h-10 flex items-center justify-center shrink-0" />
               <button
                 onClick={() => startEdit(l)}
                 aria-label={`Edit ${l.name}`}
@@ -2459,6 +2493,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                   )}
                   <td className="py-2.5 px-4">
                     <div className="flex items-center justify-end gap-3">
+                      <ShareLinkButton listing={l} className="" iconSize={15} />
                       <button onClick={() => startEdit(l)} title="Edit listing" aria-label={`Edit ${l.name}`}>
                         <Pencil size={15} color={C.gray600} className="cursor-pointer" />
                       </button>
@@ -4496,7 +4531,42 @@ const VIEW_TO_PATH = {
 };
 const PATH_TO_VIEW = Object.fromEntries(Object.entries(VIEW_TO_PATH).map(([v, p]) => [p, v]));
 
+// Shareable property links: /listing/12-bae-dream  (only the leading number matters;
+// the name part is just there so the link reads nicely in a chat).
+const listingPath = (l) => {
+  const slug = String(l?.name || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 60);
+  return `/listing/${l.id}${slug ? `-${slug}` : ""}`;
+};
+const listingUrl = (l) => `${typeof window !== "undefined" ? window.location.origin : "https://bookinngh.com"}${listingPath(l)}`;
+const listingIdFromPath = (pathname) => {
+  const m = /^\/listing\/(\d+)(?:-[^/]*)?\/?$/.exec(pathname || "");
+  return m ? Number(m[1]) : null;
+};
+
+// Opens the phone's share sheet (WhatsApp, Messages, etc.) when available, otherwise copies the link.
+// Returns "shared" | "copied" | "failed".
+async function shareListingLink(listing) {
+  const url = listingUrl(listing);
+  const title = `${listing.name} — BookInn`;
+  if (typeof navigator !== "undefined" && navigator.share) {
+    try {
+      await navigator.share({ title, text: `Check out ${listing.name} on BookInn`, url });
+      return "shared";
+    } catch (e) {
+      if (e?.name === "AbortError") return "failed"; // person closed the share sheet
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    return "copied";
+  } catch {
+    window.prompt("Copy this link:", url);
+    return "copied";
+  }
+}
+
 function viewFromPath(pathname) {
+  if (listingIdFromPath(pathname) != null) return "detail";
   return PATH_TO_VIEW[pathname] || "home";
 }
 
@@ -4513,10 +4583,11 @@ export default function App() {
   );
   // Wraps setView so every in-app navigation also updates the address bar —
   // this is what makes the admin panel reachable at its own /admin URL.
+  const selectedListingRef = useRef(null); // kept in sync below; lets setView/popstate know which property is open
   const setView = React.useCallback((next) => {
     setViewState(next);
     if (typeof window !== "undefined") {
-      const path = VIEW_TO_PATH[next];
+      const path = next === "detail" && selectedListingRef.current ? listingPath(selectedListingRef.current) : VIEW_TO_PATH[next];
       if (path && window.location.pathname !== path) {
         window.history.pushState({ view: next }, "", path);
       }
@@ -4524,6 +4595,23 @@ export default function App() {
   }, []);
 
   const [selectedListing, setSelectedListing] = useState(null);
+  selectedListingRef.current = selectedListing;
+  // null | "loading" | "notfound" | "restricted" — only used when a property is opened from a shared link.
+  const [deepLink, setDeepLink] = useState(() =>
+    typeof window !== "undefined" && listingIdFromPath(window.location.pathname) != null ? "loading" : null
+  );
+  const loadListingById = React.useCallback(async (id) => {
+    if (selectedListingRef.current?.id === id) { setDeepLink(null); return; }
+    setDeepLink("loading");
+    try {
+      const { listing } = await api.getListing(id);
+      selectedListingRef.current = listing;
+      setSelectedListing(listing);
+      setDeepLink(null);
+    } catch {
+      setDeepLink("notfound");
+    }
+  }, []);
   // A shared group link (/?group=CODE) takes the student straight to that room's
   // booking form with the code filled in — also how a leader returns to their group.
   const [groupLink, setGroupLink] = useState(null);
@@ -4584,9 +4672,17 @@ export default function App() {
 
   // Keep view in sync with browser back/forward navigation.
   React.useEffect(() => {
-    const onPopState = () => setViewState(viewFromPath(window.location.pathname));
+    const onPopState = () => {
+      const p = window.location.pathname;
+      setViewState(viewFromPath(p));
+      const id = listingIdFromPath(p);
+      if (id != null) loadListingById(id);
+    };
+    const firstId = listingIdFromPath(window.location.pathname);
+    if (firstId != null) loadListingById(firstId); // someone opened a shared property link
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Load listings from the backend on first mount, and again every time the
@@ -4599,6 +4695,14 @@ export default function App() {
   // (see university on their account, set at signup) — so cards, search and
   // favorites for that account never include another school's listings.
   const studentUniversity = user?.role === "Student" ? user?.university : null;
+  // A student's account is scoped to their own university, so a shared link to another
+  // school's property shows a friendly notice instead of opening it (same rule as openListing).
+  React.useEffect(() => {
+    if (view !== "detail" || !selectedListing) return;
+    if (studentUniversity && selectedListing.university !== studentUniversity) setDeepLink("restricted");
+    else setDeepLink((d) => (d === "restricted" ? null : d));
+  }, [view, selectedListing, studentUniversity]);
+
   React.useEffect(() => {
     if (view !== "home") return;
     setListingsLoading((prev) => (listings.length === 0 ? true : prev));
@@ -4623,7 +4727,7 @@ export default function App() {
         setSelectedListing(target);
         setGroupLink({ code: group.code, roomType: group.roomType });
         setViewState("detail");
-        window.history.replaceState({ view: "detail" }, "", "/");
+        window.history.replaceState({ view: "detail" }, "", listingPath(target));
       } catch { /* bad or expired link — just land on the homepage */ }
     })();
   }, []);
@@ -4703,6 +4807,8 @@ export default function App() {
     // this only matters for a stale card (e.g. a favorite saved before a
     // listing's university changed). Never let a student open another school's listing.
     if (studentUniversity && listing.university !== studentUniversity) return;
+    setDeepLink(null);
+    selectedListingRef.current = listing; // so setView puts this property's own link in the address bar
     setSelectedListing(listing);
     setView("detail");
     window.scrollTo?.(0, 0);
@@ -4813,7 +4919,10 @@ export default function App() {
             <HomeView favorites={favorites} toggleFav={toggleFav} onOpenListing={openListing} listings={listings} loading={listingsLoading} studentUniversity={studentUniversity} universities={universities} />
           )
         )}
-       {view === "detail" && selectedListing && (
+       {view === "detail" && deepLink && (
+          <DeepLinkNotice status={deepLink} onBrowse={() => { setDeepLink(null); setView("home"); }} />
+        )}
+        {view === "detail" && !deepLink && selectedListing && (
           <DetailView
             key={`${selectedListing.id}-${groupLink?.code || ""}`} groupLink={groupLink}
             listing={selectedListing} onBack={() => { setGroupLink(null); setView("home"); }} isFav={favorites.has(selectedListing.id)} toggleFav={toggleFav}
