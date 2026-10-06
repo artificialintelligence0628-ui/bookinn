@@ -417,7 +417,9 @@ function MultiSelectDropdown({ label, options, selected, onToggle }) {
 /* ---------------------------------------------------------
    FILTER SIDEBAR
 --------------------------------------------------------- */
-function FilterSidebar({ filters, setFilters, resultCount, universities, showUniversityFilter }) {
+function FilterBar({ filters, setFilters, resultCount, universities, showUniversityFilter }) {
+  const [mobileOpen, setMobileOpen] = useState(false);
+
   const toggleRoomType = (rt) => {
     setFilters((f) => ({
       ...f,
@@ -435,88 +437,123 @@ function FilterSidebar({ filters, setFilters, resultCount, universities, showUni
   const roomTypes = ALL_ROOM_TYPES;
   const propertyTypes = ["Hostel", "Apartment"];
 
+  const activeCount =
+    (filters.priceMax !== MAX_PRICE ? 1 : 0) +
+    filters.roomTypes.length +
+    filters.propertyTypes.length +
+    (filters.bath !== "Any" ? 1 : 0) +
+    (filters.kitchen ? 1 : 0) +
+    (filters.university !== "Any" ? 1 : 0);
+
+  const clearAll = () =>
+    setFilters({ priceMax: MAX_PRICE, roomTypes: [], propertyTypes: [], bath: "Any", kitchen: false, university: "Any" });
+
+  const labelCls = "text-xs font-semibold mb-1.5";
+
   return (
-    <aside style={{ borderColor: C.border }} className="border rounded-lg p-4 h-fit md:sticky md:top-4 bg-white">
-      <div className="flex items-center gap-2 mb-4">
-        <SlidersHorizontal size={16} color={C.navy} />
-        <h3 style={{ color: C.ink }} className="font-bold text-sm">Filter results</h3>
+    <section style={{ borderColor: C.border }} className="border rounded-lg bg-white mb-5">
+      {/* Header row: always visible. On mobile it doubles as the expand/collapse toggle. */}
+      <div className="flex items-center justify-between gap-3 px-4 py-3">
+        <button
+          type="button"
+          onClick={() => setMobileOpen((o) => !o)}
+          className="flex items-center gap-2 md:cursor-default"
+          aria-expanded={mobileOpen}
+        >
+          <SlidersHorizontal size={16} color={C.navy} />
+          <h3 style={{ color: C.ink }} className="font-bold text-sm">Filter results</h3>
+          {activeCount > 0 && (
+            <span style={{ background: C.blue }} className="text-white text-[11px] font-semibold rounded-full px-2 py-0.5">{activeCount}</span>
+          )}
+          <ChevronDown
+            size={16}
+            color={C.gray600}
+            className={`md:hidden transition-transform ${mobileOpen ? "rotate-180" : ""}`}
+          />
+        </button>
+        <div className="flex items-center gap-3 text-xs">
+          <span style={{ color: C.gray600 }}>{resultCount} propert{resultCount === 1 ? "y" : "ies"} match</span>
+          {activeCount > 0 && (
+            <button type="button" onClick={clearAll} style={{ color: C.blue }} className="font-semibold hover:underline">
+              Clear all
+            </button>
+          )}
+        </div>
       </div>
 
-      {showUniversityFilter && universities?.length > 0 && (
-        <div className="mb-5">
-          <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">University</p>
+      <div
+        style={{ borderColor: C.border }}
+        className={`${mobileOpen ? "grid" : "hidden"} md:grid border-t px-4 py-4 gap-4 grid-cols-1 sm:grid-cols-2 ${showUniversityFilter && universities?.length > 0 ? "lg:grid-cols-6" : "lg:grid-cols-5"} items-end`}
+      >
+        {showUniversityFilter && universities?.length > 0 && (
+          <div>
+            <p style={{ color: C.ink }} className={labelCls}>University</p>
+            <select
+              aria-label="Filter by university"
+              value={filters.university}
+              onChange={(e) => setFilters((f) => ({ ...f, university: e.target.value }))}
+              style={{ borderColor: C.border, color: C.ink }}
+              className="w-full border rounded-md text-sm px-3 py-2 bg-white"
+            >
+              <option value="Any">All universities</option>
+              {universities.map((u) => <option key={u} value={u}>{u}</option>)}
+            </select>
+          </div>
+        )}
+
+        <div>
+          <p style={{ color: C.ink }} className={labelCls}>Max price (GH₵{filters.priceMax.toLocaleString()})</p>
+          <input
+            type="range" min="500" max={MAX_PRICE} step="250"
+            value={filters.priceMax}
+            onChange={(e) => setFilters((f) => ({ ...f, priceMax: Number(e.target.value) }))}
+            className="w-full accent-current"
+            style={{ accentColor: C.blue }}
+            title="Prices are per semester, per both semesters, or per year, shown on each listing."
+          />
+        </div>
+
+        <div>
+          <p style={{ color: C.ink }} className={labelCls}>Property type</p>
+          <MultiSelectDropdown
+            label="Any property type"
+            options={propertyTypes}
+            selected={filters.propertyTypes}
+            onToggle={togglePropertyType}
+          />
+        </div>
+
+        <div>
+          <p style={{ color: C.ink }} className={labelCls}>Room type</p>
+          <MultiSelectDropdown
+            label="Any room type"
+            options={roomTypes}
+            selected={filters.roomTypes}
+            onToggle={toggleRoomType}
+          />
+        </div>
+
+        <div>
+          <p style={{ color: C.ink }} className={labelCls}>Bathroom</p>
           <select
-            aria-label="Filter by university"
-            value={filters.university}
-            onChange={(e) => setFilters((f) => ({ ...f, university: e.target.value }))}
+            aria-label="Bathroom type"
+            value={filters.bath}
+            onChange={(e) => setFilters((f) => ({ ...f, bath: e.target.value }))}
             style={{ borderColor: C.border, color: C.ink }}
             className="w-full border rounded-md text-sm px-3 py-2 bg-white"
           >
-            <option value="Any">All universities</option>
-            {universities.map((u) => <option key={u} value={u}>{u}</option>)}
+            {["Any", "Ensuite bath", "Shared bath"].map((b) => (
+              <option key={b} value={b}>{b}</option>
+            ))}
           </select>
         </div>
-      )}
 
-      <div className="mb-5">
-        <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Max price (GH₵{filters.priceMax.toLocaleString()})</p>
-        <input
-          type="range" min="500" max={MAX_PRICE} step="250"
-          value={filters.priceMax}
-          onChange={(e) => setFilters((f) => ({ ...f, priceMax: Number(e.target.value) }))}
-          className="w-full accent-current"
-          style={{ accentColor: C.blue }}
-        />
-        <p style={{ color: C.gray600 }} className="text-xs mt-1.5">Prices are per semester, per both semesters, or per year, shown on each listing.</p>
-      </div>
-
-      <div className="mb-5">
-       
-      <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Property type</p>
-        <MultiSelectDropdown
-          label="Any property type"
-          options={propertyTypes}
-          selected={filters.propertyTypes}
-          onToggle={togglePropertyType}
-        />
-      </div>
-
-      <div className="mb-5">
-        <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Room type</p>
-        <MultiSelectDropdown
-          label="Any room type"
-          options={roomTypes}
-          selected={filters.roomTypes}
-          onToggle={toggleRoomType}
-        />
-      </div>
-
-      <div className="mb-5">
-        <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Bathroom</p>
-        <select
-          aria-label="Bathroom type"
-          value={filters.bath}
-          onChange={(e) => setFilters((f) => ({ ...f, bath: e.target.value }))}
-          style={{ borderColor: C.border, color: C.ink }}
-          className="w-full border rounded-md text-sm px-3 py-2 bg-white"
-        >
-          {["Any", "Ensuite bath", "Shared bath"].map((b) => (
-            <option key={b} value={b}>{b}</option>
-          ))}
-        </select>
-      </div>
-      
-      <div className="mb-2">
-        <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: C.gray600 }}>
+        <label className="flex items-center gap-2 text-sm cursor-pointer py-2" style={{ color: C.gray600 }}>
           <input type="checkbox" checked={filters.kitchen} onChange={(e) => setFilters((f) => ({ ...f, kitchen: e.target.checked }))} style={{ accentColor: C.blue }} />
           Shared kitchen required
         </label>
       </div>
-
-      <div style={{ borderColor: C.border }} className="border-t mt-4 pt-3 text-xs" >
-        <span style={{ color: C.gray600 }}>{resultCount} propert{resultCount === 1 ? "y" : "ies"} match your filters</span>
-      </div>
-    </aside>
+    </section>
   );
 }
 
@@ -535,11 +572,11 @@ function distanceLabel(listing) {
   return ageMs < NEW_LISTING_DAYS * 24 * 60 * 60 * 1000 ? "New listing" : "";
 }
 
-function ListingCard({ listing, isFav, toggleFav, onOpen }) {
+function ListingCard({ listing, isFav, toggleFav, onOpen, vertical = false }) {
   return (
-    <div style={{ borderColor: C.border }} className="border rounded-lg overflow-hidden bg-white hover:shadow-md transition flex flex-col sm:flex-row">
-      <div className="relative sm:w-56 shrink-0">
-        <img src={img(listing.image, 500)} alt={listing.name} loading="lazy" className="w-full h-44 sm:h-full object-cover" />
+    <div style={{ borderColor: C.border }} className={`border rounded-lg overflow-hidden bg-white hover:shadow-md transition flex flex-col ${vertical ? "h-full" : "sm:flex-row"}`}>
+      <div className={`relative shrink-0 ${vertical ? "" : "sm:w-56"}`}>
+        <img src={img(listing.image, 500)} alt={listing.name} loading="lazy" className={`w-full h-44 object-cover ${vertical ? "" : "sm:h-full"}`} />
                {(listing.featured || listing.listedByAgent) && (
           <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
             {listing.featured && (
@@ -676,43 +713,43 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
           </div>
         )}
 
-        <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-5">
-          <FilterSidebar filters={filters} setFilters={setFilters} resultCount={filtered.length} universities={universities} showUniversityFilter={!studentUniversity} />
+        <FilterBar filters={filters} setFilters={setFilters} resultCount={filtered.length} universities={universities} showUniversityFilter={!studentUniversity} />
 
-          <div>
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <h2 style={{ color: C.ink }} className="font-bold text-lg">{filtered.length} places to stay</h2>
-              <select
-                aria-label="Sort listings"
-                value={sort}
-                onChange={(e) => setSort(e.target.value)}
-                style={{ borderColor: C.border, color: C.ink }}
-                className="border rounded-md text-sm px-3 py-2 bg-white"
-              >
-                <option value="recommended">Sort: Recommended</option>
-                <option value="price-asc">Price: low to high</option>
-                <option value="price-desc">Price: high to low</option>
-                <option value="rating">Top rated</option>
-              </select>
-            </div>
-
-            <div className="flex flex-col gap-4">
-              {loading && (
-                <div style={{ borderColor: C.border }} className="border rounded-lg p-10 text-center bg-white">
-                  <p style={{ color: C.gray600 }} className="text-sm">Loading listings…</p>
-                </div>
-              )}
-              {!loading && filtered.map((l) => (
-                <ListingCard key={l.id} listing={l} isFav={favorites.has(l.id)} toggleFav={toggleFav} onOpen={onOpenListing} />
-              ))}
-              {!loading && filtered.length === 0 && (
-                <div style={{ borderColor: C.border }} className="border rounded-lg p-10 text-center bg-white">
-                  <p style={{ color: C.ink }} className="font-semibold mb-1">No properties match those filters</p>
-                  <p style={{ color: C.gray600 }} className="text-sm">Try widening your price range or clearing a filter.</p>
-                </div>
-              )}
-            </div>
+        <div>
+          <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+            <h2 style={{ color: C.ink }} className="font-bold text-lg">{filtered.length} places to stay</h2>
+            <select
+              aria-label="Sort listings"
+              value={sort}
+              onChange={(e) => setSort(e.target.value)}
+              style={{ borderColor: C.border, color: C.ink }}
+              className="border rounded-md text-sm px-3 py-2 bg-white"
+            >
+              <option value="recommended">Sort: Recommended</option>
+              <option value="price-asc">Price: low to high</option>
+              <option value="price-desc">Price: high to low</option>
+              <option value="rating">Top rated</option>
+            </select>
           </div>
+
+          {loading && (
+            <div style={{ borderColor: C.border }} className="border rounded-lg p-10 text-center bg-white">
+              <p style={{ color: C.gray600 }} className="text-sm">Loading listings…</p>
+            </div>
+          )}
+          {!loading && filtered.length > 0 && (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {filtered.map((l) => (
+                <ListingCard key={l.id} vertical listing={l} isFav={favorites.has(l.id)} toggleFav={toggleFav} onOpen={onOpenListing} />
+              ))}
+            </div>
+          )}
+          {!loading && filtered.length === 0 && (
+            <div style={{ borderColor: C.border }} className="border rounded-lg p-10 text-center bg-white">
+              <p style={{ color: C.ink }} className="font-semibold mb-1">No properties match those filters</p>
+              <p style={{ color: C.gray600 }} className="text-sm">Try widening your price range or clearing a filter.</p>
+            </div>
+          )}
         </div>
       </div>
     </div>
