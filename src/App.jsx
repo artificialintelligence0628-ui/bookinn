@@ -636,6 +636,7 @@ function FilterBar({ filters, setFilters, resultCount, universities, showUnivers
 
 // Leaflet is only fetched when someone opens the map.
 const ListingsMap = React.lazy(() => import("./ListingsMap.jsx"));
+const LocationPicker = React.lazy(() => import("./LocationPicker.jsx"));
 
 /* Grid / list / map switch */
 function ViewToggle({ view, setView }) {
@@ -1873,7 +1874,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
     type: "Hostel", roomType: HOSTEL_ROOM_TYPES[0], bath: "Shared bath",
     kitchen: false, featured: false, amenities: [], imageData: "", galleryData: [], videoData: "",
     walkthrough: [], uploadingImage: false, uploadingGallery: false, uploadingVideo: false, uploadingWalkthrough: {},
-    desc: "", locationDescription: "", travelKm: "", travelMinutes: "", travelMode: "walk", pricingPeriod: "Per semester",
+    desc: "", locationDescription: "", pin: null, travelKm: "", travelMinutes: "", travelMode: "walk", pricingPeriod: "Per semester",
     ownerEmail: "", ownerWhatsapp: "", availability: AVAILABILITY_STATUSES[0],
     // Hostel room categories: owner ticks every occupancy their hostel actually offers
     // (e.g. both "Two in a room" and "Four in a room") and sets a price for each.
@@ -2068,6 +2069,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
       walkthrough: Array.isArray(listing.walkthrough) ? listing.walkthrough.map((s) => ({ label: s.label || "", image: s.image || "" })) : [],
       desc: listing.desc || "",
       locationDescription: listing.locationDescription || "",
+      pin: listing.lat != null && listing.lng != null ? { lat: Number(listing.lat), lng: Number(listing.lng) } : null,
       ownerEmail: listing.ownerEmail || "",
       ownerWhatsapp: listing.ownerWhatsapp || "",
       availability: listing.availability || AVAILABILITY_STATUSES[0],
@@ -2139,6 +2141,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
         image: form.imageData || existing?.image || "hostel1",
         images: form.galleryData,
         video: form.videoData, desc: form.desc, locationDescription: form.locationDescription,
+        lat: form.pin ? form.pin.lat : null, lng: form.pin ? form.pin.lng : null,
         walkthrough: form.walkthrough.filter((s) => s.image),
         ownerEmail: form.ownerEmail, ownerWhatsapp: form.ownerWhatsapp, availability: form.availability,
         distance,
@@ -2329,6 +2332,14 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
               className="border rounded-md px-3 py-2 text-sm outline-none w-full resize-none"
             />
             <p style={{ color: C.gray600 }} className="text-xs mt-1.5">Optional — shown to students on the listing page to help them find the property.</p>
+          </div>
+
+          <div className="mb-4">
+            <p style={{ color: C.ink }} className="text-sm font-semibold mb-2">Pin on map</p>
+            <React.Suspense fallback={<div style={{ color: C.gray600, borderColor: C.border }} className="border rounded-lg h-[280px] flex items-center justify-center text-sm">Loading map…</div>}>
+              <LocationPicker value={form.pin} onChange={(pin) => setForm((f) => ({ ...f, pin }))} university={form.university} />
+            </React.Suspense>
+            <p style={{ color: C.gray600 }} className="text-xs mt-1.5">Optional — a pin lets students see exactly where the property is on the map. Without one, it shows near the campus only.</p>
           </div>
 
           <div className="mb-4">
