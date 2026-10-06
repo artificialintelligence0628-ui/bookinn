@@ -229,3 +229,9 @@ ALTER TABLE booking_groups ADD COLUMN IF NOT EXISTS sent_count INTEGER NOT NULL 
 -- When the person agreed to the Terms & Conditions / Privacy Policy at sign-up.
 -- NULL for accounts created before the consent checkbox existed.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;
+
+-- Exact map position of a listing (set by the owner/admin by pinning the
+-- building on a map). NULL until pinned; the student map falls back to an
+-- approximate spot near the campus for listings without one.
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;
