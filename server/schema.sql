@@ -225,3 +225,7 @@ ALTER TABLE booking_groups ADD COLUMN IF NOT EXISTS leader_token TEXT;
 -- How many times the leader has sent the combined request to the owner. Lets the
 -- owner see "UPDATED request #2" when more friends join after the first send.
 ALTER TABLE booking_groups ADD COLUMN IF NOT EXISTS sent_count INTEGER NOT NULL DEFAULT 0;
+
+-- When the person agreed to the Terms & Conditions / Privacy Policy at sign-up.
+-- NULL for accounts created before the consent checkbox existed.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;
