@@ -258,11 +258,13 @@ export const store = {
       client.release();
     }
   },
-  async addUser({ name, email, passwordHash, role, university }) {
+  async addUser({ name, email, passwordHash, role, university, marketingEmails = false }) {
+    // terms_accepted_at records when the person agreed to the Terms/Privacy Policy
+    // (the API refuses account creation without that agreement).
     const { rows } = await pool.query(
-      `INSERT INTO users (name, email, password_hash, role, subscription, has_used_free_trial, university)
-       VALUES ($1,$2,$3,$4,$5,false,$6) RETURNING *`,
-      [name, email, passwordHash, role || "Student", JSON.stringify(defaultSubscription()), university || null]
+      `INSERT INTO users (name, email, password_hash, role, subscription, has_used_free_trial, university, marketing_emails, terms_accepted_at)
+       VALUES ($1,$2,$3,$4,$5,false,$6,$7, now()) RETURNING *`,
+      [name, email, passwordHash, role || "Student", JSON.stringify(defaultSubscription()), university || null, !!marketingEmails]
     );
     return mapUser(rows[0]);
   },
