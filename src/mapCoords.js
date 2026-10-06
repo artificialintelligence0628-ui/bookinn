@@ -17,6 +17,12 @@ const CAMPUS_CENTRES = [
   { match: /upsa|professional studies/i, lat: 5.663, lng: -0.17 },
 ];
 
+// Campus centre for a university name, or null if it isn't one we know.
+export function getCampusCentre(university) {
+  const c = CAMPUS_CENTRES.find((x) => x.match.test(university || ""));
+  return c ? { lat: c.lat, lng: c.lng } : null;
+}
+
 function hashString(str) {
   let h = 2166136261;
   for (let i = 0; i < str.length; i++) {
