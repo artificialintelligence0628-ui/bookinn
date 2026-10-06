@@ -73,6 +73,10 @@ app.use(helmet({
   // Google's sign-in popup needs to talk back to this page; helmet's default
   // "same-origin" would sever that connection.
   crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+  // helmet's default is "no-referrer", which strips the Referer header from
+  // every outgoing request. OpenStreetMap's tile servers block requests with
+  // no Referer, so send the site's origin (and nothing more) cross-origin.
+  referrerPolicy: { policy: "strict-origin-when-cross-origin" },
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
