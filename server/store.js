@@ -117,6 +117,10 @@ export const store = {
     const { rows } = await pool.query("SELECT * FROM listings ORDER BY id DESC");
     return rows.map(mapListing);
   },
+  async getListingById(id) {
+    const { rows } = await pool.query("SELECT * FROM listings WHERE id = $1", [id]);
+    return mapListing(rows[0]);
+  },
   async getListingsByOwner(ownerId) {
     const { rows } = await pool.query("SELECT * FROM listings WHERE owner_id = $1 ORDER BY id DESC", [ownerId]);
     return rows.map(mapListing);
