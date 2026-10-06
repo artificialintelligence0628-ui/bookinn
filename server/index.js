@@ -76,7 +76,7 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      imgSrc: ["'self'", "data:", "https://res.cloudinary.com"],
+      imgSrc: ["'self'", "data:", "https://res.cloudinary.com", "https://tile.openstreetmap.org"],
       mediaSrc: ["'self'", "https://res.cloudinary.com"],
       // 'unsafe-inline' is needed because the app sets React inline style={{}}
       // attributes throughout, and injects the Google Fonts @import via a
