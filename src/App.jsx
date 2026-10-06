@@ -2,6 +2,7 @@ import React, { useState, useMemo, useRef, useEffect } from "react";
 import { api } from "./api.js";
 import PlatformAdminEmails from "./AdminEmails.jsx";
 import GoogleAuthButton, { GOOGLE_CLIENT_ID } from "./GoogleAuth.jsx";
+import { PrivacyPolicyView, TermsView, CookiePolicyView } from "./LegalPages.jsx";
 import { C } from "./theme.js";
 import { Badge, PrimaryButton, GhostButton, AdminStatCard, DataTable, RoleBadge } from "./adminUI.jsx";
 import {
@@ -1153,6 +1154,14 @@ function ContactModal({ listing, roomType, onClose, initialGroupCode = "" }) {
                   <p style={{ color: "#b3261e" }} className="text-xs">{sendError}</p>
                 )}
                 {groupMode !== "reopen" && (
+                  <p style={{ color: C.gray600 }} className="text-xs leading-relaxed">
+                    By sending this request you agree that your name, contact details, move-in date and message will be shared with the property owner or agent
+                    {groupMode !== "none" ? " and the other members of your roommate group" : ""}, and processed as described in our{" "}
+                    <a href="/privacy-policy" target="_blank" rel="noreferrer" style={{ color: C.blue }} className="font-semibold hover:underline">Privacy Policy</a>{" "}
+                    and <a href="/terms" target="_blank" rel="noreferrer" style={{ color: C.blue }} className="font-semibold hover:underline">Terms</a>.
+                  </p>
+                )}
+                {groupMode !== "reopen" && (
                   <PrimaryButton full onClick={sendRequest} disabled={busy}>
                     {busy ? "Sending…" : groupMode === "none" ? "Send request & continue to WhatsApp" : groupMode === "create" ? "Create group" : "Join group"}
                   </PrimaryButton>
@@ -1217,6 +1226,12 @@ function ReviewForm({ listingId, onSubmitted }) {
       </div>
       <textarea placeholder="What was your experience like? (optional)" rows={2} value={text} onChange={(e) => setText(e.target.value)}
         style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none w-full resize-none mb-2" />
+      <p style={{ color: C.gray600 }} className="text-xs leading-relaxed mb-2">
+        Your name and review will be shown publicly on this listing. By submitting you agree to our{" "}
+        <a href="/terms" target="_blank" rel="noreferrer" style={{ color: C.blue }} className="font-semibold hover:underline">Terms</a> and{" "}
+        <a href="/privacy-policy" target="_blank" rel="noreferrer" style={{ color: C.blue }} className="font-semibold hover:underline">Privacy Policy</a>.
+        Please keep it honest and don't include other people's private details.
+      </p>
       {error && <p style={{ color: "#b3261e" }} className="text-xs mb-2">{error}</p>}
       <PrimaryButton onClick={submit} disabled={submitting}>{submitting ? "Submitting…" : "Submit review"}</PrimaryButton>
     </div>
@@ -2320,6 +2335,12 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
               {submitError}
             </div>
           )}
+          <p style={{ color: C.gray600 }} className="text-xs leading-relaxed mb-3">
+            By saving this listing you confirm you have the right to advertise this property and to use all photos, videos and text in it, that the details are accurate,
+            and that your contact email and WhatsApp number may be shown to students. See our{" "}
+            <a href="/terms" target="_blank" rel="noreferrer" style={{ color: C.blue }} className="font-semibold hover:underline">Terms</a> and{" "}
+            <a href="/privacy-policy" target="_blank" rel="noreferrer" style={{ color: C.blue }} className="font-semibold hover:underline">Privacy Policy</a>.
+          </p>
           <div className="flex gap-2">
             <PrimaryButton onClick={submit} disabled={submitting || stillUploading}>
               {submitting ? "Saving…" : stillUploading ? "Uploading…" : editingId ? "Update listing" : "Save listing"}
@@ -2512,6 +2533,33 @@ function PasswordInput({ placeholder, value, onChange, onKeyDown, className, sty
 
 
 /* ---------------------------------------------------------
+   SIGN-UP CONSENT — required Terms/Privacy agreement plus a SEPARATE,
+   optional (unticked by default) marketing-email opt-in. Links open in a
+   new tab so nobody loses what they've typed.
+--------------------------------------------------------- */
+function SignupConsent({ agreed, setAgreed, marketing, setMarketing }) {
+  const link = { color: C.blue };
+  return (
+    <div className="flex flex-col gap-2">
+      <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: C.gray600 }}>
+        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)}
+          style={{ accentColor: C.blue }} className="mt-0.5 shrink-0" />
+        <span>
+          I agree to the <a href="/terms" target="_blank" rel="noreferrer" style={link} className="font-semibold hover:underline">Terms &amp; Conditions</a> and
+          have read the <a href="/privacy-policy" target="_blank" rel="noreferrer" style={link} className="font-semibold hover:underline">Privacy Policy</a>,
+          and I consent to BookInn collecting and using my details as described there.
+        </span>
+      </label>
+      <label className="flex items-start gap-2 text-xs cursor-pointer" style={{ color: C.gray600 }}>
+        <input type="checkbox" checked={marketing} onChange={(e) => setMarketing(e.target.checked)}
+          style={{ accentColor: C.blue }} className="mt-0.5 shrink-0" />
+        <span>(Optional) Email me BookInn news, tips and offers. I can unsubscribe at any time.</span>
+      </label>
+    </div>
+  );
+}
+
+/* ---------------------------------------------------------
    LOGIN VIEW
 --------------------------------------------------------- */
 function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities }) {
@@ -2522,6 +2570,8 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
   const [confirmPassword, setConfirmPassword] = useState("");
   const [role, setRole] = useState("Student");
   const [university, setUniversity] = useState("");
+  const [agreed, setAgreed] = useState(false);          // Terms + Privacy consent (required to sign up)
+  const [marketingOptIn, setMarketingOptIn] = useState(false); // optional, never pre-ticked
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   // Universities load async — default to the first one once the list arrives,
@@ -2560,9 +2610,10 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
   const finishGoogleSignup = async () => {
     setError("");
     if (role === "Student" && !university) { setError("Select your university."); return; }
+    if (!agreed) { setError("Please agree to the Terms & Conditions and Privacy Policy to create your account."); return; }
     setBusy(true);
     try {
-      const data = await api.googleAuth(googlePending.credential, role, role === "Student" ? university : undefined);
+      const data = await api.googleAuth(googlePending.credential, role, role === "Student" ? university : undefined, { acceptedTerms: true, marketingEmails: marketingOptIn });
       onAuthSuccess(data.user, data.token);
     } catch (err) {
       // Google's token is short-lived — if it expired mid-way, start over.
@@ -2616,9 +2667,10 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
     if (password.length < 6) { setError("Password must be at least 6 characters."); return; }
     if (password !== confirmPassword) { setError("Passwords don't match."); return; }
     if (role === "Student" && !university) { setError("Select your university."); return; }
+    if (!agreed) { setError("Please agree to the Terms & Conditions and Privacy Policy to create your account."); return; }
     setBusy(true);
     try {
-      const data = await api.signup(name, email, password, role, role === "Student" ? university : undefined);
+      const data = await api.signup(name, email, password, role, role === "Student" ? university : undefined, { acceptedTerms: true, marketingEmails: marketingOptIn });
       onAuthSuccess(data.user, data.token);
     } catch (err) {
       setError(err.message);
@@ -2673,6 +2725,7 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
                 <p style={{ color: C.gray600 }} className="text-xs mt-1.5">You'll only see hostels and apartments near this campus.</p>
               </div>
             )}
+            <SignupConsent agreed={agreed} setAgreed={setAgreed} marketing={marketingOptIn} setMarketing={setMarketingOptIn} />
             <PrimaryButton full onClick={finishGoogleSignup} disabled={busy}>
               {busy ? "Please wait…" : "Create account"}
             </PrimaryButton>
@@ -2807,6 +2860,9 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
             <button type="button" onClick={() => setView("forgot-password")} style={{ color: C.blue }} className="text-xs font-semibold text-right hover:underline -mt-1">
               Forgot password?
             </button>
+          )}
+          {mode === "signup" && (
+            <SignupConsent agreed={agreed} setAgreed={setAgreed} marketing={marketingOptIn} setMarketing={setMarketingOptIn} />
           )}
           <PrimaryButton full onClick={submit} disabled={busy}>
             {busy ? "Please wait…" : mode === "signin" ? "Sign in" : "Create account"}
@@ -3340,6 +3396,11 @@ function Footer({ setView, onOwnerDashboardClick, onListPropertyClick }) {
         </div>
       </div>
       <div style={{ borderColor: "rgba(255,255,255,0.15)" }} className="border-t py-4 text-center">
+        <ul className="flex justify-center gap-x-4 gap-y-1 flex-wrap mb-2">
+          <FooterLink onClick={() => setView("privacy-policy")}>Privacy Policy</FooterLink>
+          <FooterLink onClick={() => setView("terms")}>Terms &amp; Conditions</FooterLink>
+          <FooterLink onClick={() => setView("cookie-policy")}>Cookie Policy</FooterLink>
+        </ul>
         <p style={{ color: "rgba(255,255,255,0.55)" }} className="text-xs">© 2026 BookInn. Built for students, by students.</p>
       </div>
     </footer>
@@ -4428,6 +4489,9 @@ const VIEW_TO_PATH = {
   "how-it-works": "/how-it-works",
   "help-center": "/help-center",
   "safety-tips": "/safety-tips",
+  "privacy-policy": "/privacy-policy",
+  terms: "/terms",
+  "cookie-policy": "/cookie-policy",
   "platform-admin": "/platform-admin",
 };
 const PATH_TO_VIEW = Object.fromEntries(Object.entries(VIEW_TO_PATH).map(([v, p]) => [p, v]));
@@ -4766,6 +4830,9 @@ export default function App() {
         {view === "how-it-works" && <HowBookingWorksView setView={setView} />}
         {view === "help-center" && <HelpCenterView setView={setView} />}
         {view === "safety-tips" && <SafetyTipsView setView={setView} />}
+        {view === "privacy-policy" && <PrivacyPolicyView setView={setView} />}
+        {view === "terms" && <TermsView setView={setView} />}
+        {view === "cookie-policy" && <CookiePolicyView setView={setView} />}
         {view === "account" && user && <AccountView user={user} favCount={favorites.size} setView={setView} />}
         {view === "admin" && (
           !user ? (
