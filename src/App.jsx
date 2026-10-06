@@ -817,6 +817,9 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
   // Picking a pin scrolls the matching card into view in the side list.
   useEffect(() => {
     if (view !== "map" || selectedId == null || !listColRef.current) return;
+    // On phones the map is pinned above the list and shows its own preview card,
+    // so only auto-scroll the side list on wider screens.
+    if (!window.matchMedia("(min-width: 768px)").matches) return;
     const el = listColRef.current.querySelector(`[data-listing-id="${selectedId}"]`);
     if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
   }, [selectedId, view]);
@@ -889,8 +892,8 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
                   <span>Pin positions are approximate and sit around each campus. Exact locations appear once a listing adds them.</span>
                 </p>
               )}
-              <div className="md:grid md:grid-cols-[minmax(0,400px)_1fr] gap-4">
-                <div ref={listColRef} className="hidden md:flex flex-col gap-4 md:max-h-[calc(100vh-9rem)] overflow-y-auto pr-1 pb-1">
+              <div className="flex flex-col md:grid md:grid-cols-[minmax(0,400px)_1fr] gap-4">
+                <div ref={listColRef} className="flex flex-col gap-4 mt-4 md:mt-0 md:max-h-[calc(100vh-9rem)] md:overflow-y-auto pr-1 pb-1">
                   {filtered.map((l) => (
                     <div
                       key={l.id}
@@ -905,7 +908,7 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
                   ))}
                 </div>
 
-                <div style={{ borderColor: C.border }} className="relative border rounded-lg overflow-hidden h-[68vh] min-h-[420px] md:h-[calc(100vh-9rem)] md:sticky md:top-4">
+                <div style={{ borderColor: C.border }} className="relative border rounded-lg overflow-hidden order-first md:order-none sticky top-2 z-20 h-[42vh] min-h-[280px] md:h-[calc(100vh-9rem)] md:top-4 md:z-auto">
                   <React.Suspense fallback={<div style={{ color: C.gray600 }} className="w-full h-full flex items-center justify-center text-sm bg-white">Loading map…</div>}>
                     <ListingsMap listings={filtered} selectedId={selectedId} hoverId={hoverId} onSelect={setSelectedId} />
                   </React.Suspense>
@@ -916,7 +919,7 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
                     </div>
                   )}
 
-                  {/* Phone: tapping a pin shows a compact preview, since the side list is hidden */}
+                  {/* Phone: tapping a pin shows a compact preview over the pinned map */}
                   {selectedListing && (
                     <div className="md:hidden absolute left-3 right-3 bottom-3 z-[1000] bg-white rounded-xl shadow-xl flex overflow-hidden">
                       <img src={img(selectedListing.image, 300)} alt="" className="w-28 h-28 object-cover shrink-0" />
