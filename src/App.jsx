@@ -680,7 +680,7 @@ function ListingCard({ listing, isFav, toggleFav, onOpen, vertical = false }) {
   return (
     <div style={{ borderColor: C.border }} className={`border rounded-lg overflow-hidden bg-white hover:shadow-md transition flex flex-col ${vertical ? "h-full" : "sm:flex-row"}`}>
       <div className={`relative shrink-0 ${vertical ? "" : "sm:w-56"}`}>
-        <img src={img(listing.image, 500)} alt={listing.name} loading="lazy" className={`w-full h-44 object-cover ${vertical ? "" : "sm:h-full"} ${listing.availability === "Fully booked" ? "saturate-50 opacity-90" : ""}`} />
+        <img src={img(listing.image, 500)} alt={listing.name} loading="lazy" className={`w-full h-44 object-cover ${vertical ? "" : "sm:h-full"}`} />
                {(listing.featured || listing.listedByAgent) && (
           <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
             {listing.featured && (
