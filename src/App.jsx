@@ -4,6 +4,7 @@ import PlatformAdminEmails from "./AdminEmails.jsx";
 import GoogleAuthButton, { GOOGLE_CLIENT_ID } from "./GoogleAuth.jsx";
 import { PrivacyPolicyView, TermsView, CookiePolicyView } from "./LegalPages.jsx";
 import { C } from "./theme.js";
+import { getListingCoords } from "./mapCoords.js";
 import { Badge, PrimaryButton, GhostButton, AdminStatCard, DataTable, RoleBadge } from "./adminUI.jsx";
 import {
   Search, MapPin, Star, Wifi, Droplet, Zap, UtensilsCrossed, ShieldCheck,
@@ -13,7 +14,8 @@ import {
   Eye, EyeOff, Pencil, Trash2, BadgeCheck, ImagePlus, Flame, Gauge,
   ChevronDown, AlertTriangle, Lock, CreditCard, HelpCircle,
   Shirt, Table2, Armchair, Fan, Copy, Compass, BookOpen, Dumbbell,
-  GraduationCap, UserCog, Inbox, Shield, RefreshCw, Wallet, Clock, LogOut, Briefcase, Share2
+  GraduationCap, UserCog, Inbox, Shield, RefreshCw, Wallet, Clock, LogOut, Briefcase, Share2,
+  LayoutGrid, List as ListIcon, Map as MapIcon
 } from "lucide-react";
 
 /* ---------------------------------------------------------
@@ -417,143 +419,245 @@ function MultiSelectDropdown({ label, options, selected, onToggle }) {
 /* ---------------------------------------------------------
    FILTER SIDEBAR
 --------------------------------------------------------- */
-function FilterBar({ filters, setFilters, resultCount, universities, showUniversityFilter }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+const PRICE_PRESETS = [
+  { label: "Under GH₵3,000", value: 3000 },
+  { label: "Under GH₵5,000", value: 5000 },
+  { label: "Under GH₵8,000", value: 8000 },
+  { label: "Under GH₵12,000", value: 12000 },
+  { label: "Any price", value: MAX_PRICE },
+];
 
-  const toggleRoomType = (rt) => {
-    setFilters((f) => ({
-      ...f,
-      roomTypes: f.roomTypes.includes(rt) ? f.roomTypes.filter((x) => x !== rt) : [...f.roomTypes, rt],
-    }));
-  };
+const DEFAULT_FILTERS = { priceMax: MAX_PRICE, roomTypes: [], propertyTypes: [], bath: "Any", kitchen: false, university: "Any", availableOnly: false };
 
-  const togglePropertyType = (pt) => {
-    setFilters((f) => ({
-      ...f,
-      propertyTypes: f.propertyTypes.includes(pt) ? f.propertyTypes.filter((x) => x !== pt) : [...f.propertyTypes, pt],
-    }));
-  };
+function countActiveFilters(f) {
+  return (f.priceMax !== MAX_PRICE ? 1 : 0) + f.roomTypes.length + f.propertyTypes.length
+    + (f.bath !== "Any" ? 1 : 0) + (f.kitchen ? 1 : 0) + (f.university !== "Any" ? 1 : 0) + (f.availableOnly ? 1 : 0);
+}
 
-  const roomTypes = ALL_ROOM_TYPES;
-  const propertyTypes = ["Hostel", "Apartment"];
+/* One-tap pill used for quick filters and for options inside the filter sheet */
+function FilterChip({ active, onClick, children, icon: Icon }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={active
+        ? { background: C.blueLight, borderColor: C.blue, color: C.navy }
+        : { background: C.white, borderColor: "#d5dde6", color: C.ink }}
+      className="shrink-0 inline-flex items-center gap-1.5 border rounded-full text-sm font-medium px-3.5 h-9 whitespace-nowrap transition-colors hover:border-[#0071c2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071c2]"
+    >
+      {active ? <Check size={14} color={C.blue} /> : Icon ? <Icon size={14} color={C.gray600} /> : null}
+      {children}
+    </button>
+  );
+}
 
-  const activeCount =
-    (filters.priceMax !== MAX_PRICE ? 1 : 0) +
-    filters.roomTypes.length +
-    filters.propertyTypes.length +
-    (filters.bath !== "Any" ? 1 : 0) +
-    (filters.kitchen ? 1 : 0) +
-    (filters.university !== "Any" ? 1 : 0);
+function FilterSection({ title, hint, children }) {
+  return (
+    <div style={{ borderColor: C.border }} className="py-5 border-b last:border-b-0">
+      <div className="flex items-baseline justify-between gap-3 mb-3">
+        <h4 style={{ color: C.ink }} className="font-semibold text-sm">{title}</h4>
+        {hint && <span style={{ color: C.gray600 }} className="text-xs">{hint}</span>}
+      </div>
+      {children}
+    </div>
+  );
+}
 
-  const clearAll = () =>
-    setFilters({ priceMax: MAX_PRICE, roomTypes: [], propertyTypes: [], bath: "Any", kitchen: false, university: "Any" });
+/* "More filters" panel — bottom sheet on phones, centred dialog on desktop */
+function FilterSheet({ open, onClose, filters, setFilters, resultCount, universities, showUniversityFilter }) {
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", onKey);
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [open, onClose]);
 
-  const labelCls = "text-xs font-semibold mb-1.5";
+  if (!open) return null;
+
+  const toggleIn = (key, val) =>
+    setFilters((f) => ({ ...f, [key]: f[key].includes(val) ? f[key].filter((x) => x !== val) : [...f[key], val] }));
+  const active = countActiveFilters(filters);
 
   return (
-    <section style={{ borderColor: C.border }} className="border rounded-lg bg-white mb-5">
-      {/* Header row: always visible. On mobile it doubles as the expand/collapse toggle. */}
-      <div className="flex items-center justify-between gap-3 px-4 py-3">
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" role="dialog" aria-modal="true" aria-label="More filters">
+      <div className="absolute inset-0 bg-black/45" onClick={onClose} />
+      <div className="relative bg-white w-full sm:max-w-lg rounded-t-2xl sm:rounded-2xl shadow-2xl flex flex-col max-h-[88vh]">
+        <div style={{ borderColor: C.border }} className="flex items-center justify-between px-5 h-14 border-b shrink-0">
+          <h3 style={{ color: C.ink }} className="font-bold text-base">Filters</h3>
+          <button type="button" onClick={onClose} aria-label="Close filters" className="w-9 h-9 -mr-2 rounded-full flex items-center justify-center hover:bg-gray-100">
+            <X size={18} color={C.ink} />
+          </button>
+        </div>
+
+        <div className="overflow-y-auto px-5 flex-1">
+          {showUniversityFilter && universities?.length > 0 && (
+            <FilterSection title="University">
+              <select
+                aria-label="Filter by university"
+                value={filters.university}
+                onChange={(e) => setFilters((f) => ({ ...f, university: e.target.value }))}
+                style={{ borderColor: "#d5dde6", color: C.ink }}
+                className="w-full border rounded-lg text-sm px-3 h-11 bg-white"
+              >
+                <option value="Any">All universities</option>
+                {universities.map((u) => <option key={u} value={u}>{u}</option>)}
+              </select>
+            </FilterSection>
+          )}
+
+          <FilterSection title="Budget" hint={filters.priceMax === MAX_PRICE ? "Any price" : `Up to GH₵${filters.priceMax.toLocaleString()}`}>
+            <div className="flex flex-wrap gap-2 mb-4">
+              {PRICE_PRESETS.map((p) => (
+                <FilterChip key={p.value} active={filters.priceMax === p.value} onClick={() => setFilters((f) => ({ ...f, priceMax: p.value }))}>
+                  {p.label}
+                </FilterChip>
+              ))}
+            </div>
+            <input
+              type="range" min="500" max={MAX_PRICE} step="250"
+              aria-label="Maximum price"
+              value={filters.priceMax}
+              onChange={(e) => setFilters((f) => ({ ...f, priceMax: Number(e.target.value) }))}
+              className="w-full"
+              style={{ accentColor: C.blue }}
+            />
+            <p style={{ color: C.gray600 }} className="text-xs mt-2">Prices are per semester, per both semesters, or per year, as shown on each listing.</p>
+          </FilterSection>
+
+          <FilterSection title="Property type">
+            <div className="flex flex-wrap gap-2">
+              {["Hostel", "Apartment"].map((t) => (
+                <FilterChip key={t} active={filters.propertyTypes.includes(t)} onClick={() => toggleIn("propertyTypes", t)}>{t}</FilterChip>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="Room type">
+            <div className="flex flex-wrap gap-2">
+              {ALL_ROOM_TYPES.map((t) => (
+                <FilterChip key={t} active={filters.roomTypes.includes(t)} onClick={() => toggleIn("roomTypes", t)}>{t}</FilterChip>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="Bathroom">
+            <div className="flex flex-wrap gap-2">
+              {["Any", "Ensuite bath", "Shared bath"].map((b) => (
+                <FilterChip key={b} active={filters.bath === b} onClick={() => setFilters((f) => ({ ...f, bath: b }))}>{b}</FilterChip>
+              ))}
+            </div>
+          </FilterSection>
+
+          <FilterSection title="Other">
+            <div className="flex flex-wrap gap-2">
+              <FilterChip active={filters.availableOnly} onClick={() => setFilters((f) => ({ ...f, availableOnly: !f.availableOnly }))}>Available now</FilterChip>
+              <FilterChip active={filters.kitchen} onClick={() => setFilters((f) => ({ ...f, kitchen: !f.kitchen }))}>Shared kitchen</FilterChip>
+            </div>
+          </FilterSection>
+        </div>
+
+        <div style={{ borderColor: C.border }} className="flex items-center justify-between gap-3 px-5 py-3.5 border-t shrink-0 bg-white sm:rounded-b-2xl">
+          <button
+            type="button"
+            onClick={() => setFilters(DEFAULT_FILTERS)}
+            disabled={active === 0}
+            style={{ color: active ? C.ink : C.gray400 }}
+            className="text-sm font-semibold underline underline-offset-2 disabled:no-underline disabled:cursor-default"
+          >
+            Clear all
+          </button>
+          <PrimaryButton onClick={onClose}>
+            Show {resultCount} propert{resultCount === 1 ? "y" : "ies"}
+          </PrimaryButton>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Quick chips + "More filters" — scrolls sideways on phones */
+function FilterBar({ filters, setFilters, resultCount, universities, showUniversityFilter }) {
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const closeSheet = React.useCallback(() => setSheetOpen(false), []);
+  const activeCount = countActiveFilters(filters);
+
+  const toggleType = (t) =>
+    setFilters((f) => ({ ...f, propertyTypes: f.propertyTypes.includes(t) ? f.propertyTypes.filter((x) => x !== t) : [...f.propertyTypes, t] }));
+
+  return (
+    <>
+      <div className="flex items-center gap-2 mb-5 overflow-x-auto -mx-4 px-4 md:mx-0 md:px-0 pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         <button
           type="button"
-          onClick={() => setMobileOpen((o) => !o)}
-          className="flex items-center gap-2 md:cursor-default"
-          aria-expanded={mobileOpen}
+          onClick={() => setSheetOpen(true)}
+          style={{ borderColor: activeCount ? C.navy : "#d5dde6", color: C.ink }}
+          className="shrink-0 inline-flex items-center gap-2 border rounded-full text-sm font-semibold px-4 h-9 bg-white hover:border-[#0071c2] focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0071c2]"
         >
-          <SlidersHorizontal size={16} color={C.navy} />
-          <h3 style={{ color: C.ink }} className="font-bold text-sm">Filter results</h3>
+          <SlidersHorizontal size={15} color={C.navy} />
+          More filters
           {activeCount > 0 && (
-            <span style={{ background: C.blue }} className="text-white text-[11px] font-semibold rounded-full px-2 py-0.5">{activeCount}</span>
+            <span style={{ background: C.navy }} className="text-white text-[11px] font-bold rounded-full min-w-[20px] h-5 px-1.5 inline-flex items-center justify-center">{activeCount}</span>
           )}
-          <ChevronDown
-            size={16}
-            color={C.gray600}
-            className={`md:hidden transition-transform ${mobileOpen ? "rotate-180" : ""}`}
-          />
         </button>
-        <div className="flex items-center gap-3 text-xs">
-          <span style={{ color: C.gray600 }}>{resultCount} propert{resultCount === 1 ? "y" : "ies"} match</span>
-          {activeCount > 0 && (
-            <button type="button" onClick={clearAll} style={{ color: C.blue }} className="font-semibold hover:underline">
-              Clear all
-            </button>
-          )}
-        </div>
-      </div>
 
-      <div
-        style={{ borderColor: C.border }}
-        className={`${mobileOpen ? "grid" : "hidden"} md:grid border-t px-4 py-4 gap-4 grid-cols-1 sm:grid-cols-2 ${showUniversityFilter && universities?.length > 0 ? "lg:grid-cols-6" : "lg:grid-cols-5"} items-end`}
-      >
-        {showUniversityFilter && universities?.length > 0 && (
-          <div>
-            <p style={{ color: C.ink }} className={labelCls}>University</p>
-            <select
-              aria-label="Filter by university"
-              value={filters.university}
-              onChange={(e) => setFilters((f) => ({ ...f, university: e.target.value }))}
-              style={{ borderColor: C.border, color: C.ink }}
-              className="w-full border rounded-md text-sm px-3 py-2 bg-white"
-            >
-              <option value="Any">All universities</option>
-              {universities.map((u) => <option key={u} value={u}>{u}</option>)}
-            </select>
-          </div>
+        <span style={{ background: C.border }} className="shrink-0 w-px h-6 mx-1" aria-hidden="true" />
+
+        <FilterChip active={filters.availableOnly} onClick={() => setFilters((f) => ({ ...f, availableOnly: !f.availableOnly }))}>Available now</FilterChip>
+        <FilterChip active={filters.propertyTypes.includes("Hostel")} onClick={() => toggleType("Hostel")} icon={BedDouble}>Hostel</FilterChip>
+        <FilterChip active={filters.propertyTypes.includes("Apartment")} onClick={() => toggleType("Apartment")} icon={Building2}>Apartment</FilterChip>
+        <FilterChip active={filters.bath === "Ensuite bath"} onClick={() => setFilters((f) => ({ ...f, bath: f.bath === "Ensuite bath" ? "Any" : "Ensuite bath" }))} icon={Bath}>Ensuite</FilterChip>
+        <FilterChip active={filters.kitchen} onClick={() => setFilters((f) => ({ ...f, kitchen: !f.kitchen }))} icon={UtensilsCrossed}>Shared kitchen</FilterChip>
+
+        {activeCount > 0 && (
+          <button type="button" onClick={() => setFilters(DEFAULT_FILTERS)} style={{ color: C.blue }} className="shrink-0 text-sm font-semibold px-2 h-9 hover:underline">
+            Clear all
+          </button>
         )}
-
-        <div>
-          <p style={{ color: C.ink }} className={labelCls}>Max price (GH₵{filters.priceMax.toLocaleString()})</p>
-          <input
-            type="range" min="500" max={MAX_PRICE} step="250"
-            value={filters.priceMax}
-            onChange={(e) => setFilters((f) => ({ ...f, priceMax: Number(e.target.value) }))}
-            className="w-full accent-current"
-            style={{ accentColor: C.blue }}
-            title="Prices are per semester, per both semesters, or per year, shown on each listing."
-          />
-        </div>
-
-        <div>
-          <p style={{ color: C.ink }} className={labelCls}>Property type</p>
-          <MultiSelectDropdown
-            label="Any property type"
-            options={propertyTypes}
-            selected={filters.propertyTypes}
-            onToggle={togglePropertyType}
-          />
-        </div>
-
-        <div>
-          <p style={{ color: C.ink }} className={labelCls}>Room type</p>
-          <MultiSelectDropdown
-            label="Any room type"
-            options={roomTypes}
-            selected={filters.roomTypes}
-            onToggle={toggleRoomType}
-          />
-        </div>
-
-        <div>
-          <p style={{ color: C.ink }} className={labelCls}>Bathroom</p>
-          <select
-            aria-label="Bathroom type"
-            value={filters.bath}
-            onChange={(e) => setFilters((f) => ({ ...f, bath: e.target.value }))}
-            style={{ borderColor: C.border, color: C.ink }}
-            className="w-full border rounded-md text-sm px-3 py-2 bg-white"
-          >
-            {["Any", "Ensuite bath", "Shared bath"].map((b) => (
-              <option key={b} value={b}>{b}</option>
-            ))}
-          </select>
-        </div>
-
-        <label className="flex items-center gap-2 text-sm cursor-pointer py-2" style={{ color: C.gray600 }}>
-          <input type="checkbox" checked={filters.kitchen} onChange={(e) => setFilters((f) => ({ ...f, kitchen: e.target.checked }))} style={{ accentColor: C.blue }} />
-          Shared kitchen required
-        </label>
       </div>
-    </section>
+
+      <FilterSheet
+        open={sheetOpen}
+        onClose={closeSheet}
+        filters={filters}
+        setFilters={setFilters}
+        resultCount={resultCount}
+        universities={universities}
+        showUniversityFilter={showUniversityFilter}
+      />
+    </>
+  );
+}
+
+// Leaflet is only fetched when someone opens the map.
+const ListingsMap = React.lazy(() => import("./ListingsMap.jsx"));
+
+/* Grid / list / map switch */
+function ViewToggle({ view, setView }) {
+  const btn = (key, Icon, label) => (
+    <button
+      type="button"
+      onClick={() => setView(key)}
+      aria-pressed={view === key}
+      aria-label={label}
+      title={label}
+      style={view === key ? { background: C.blueLight, color: C.navy } : { color: C.gray600 }}
+      className="w-9 h-9 rounded-md flex items-center justify-center transition-colors hover:bg-gray-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#0071c2]"
+    >
+      <Icon size={17} />
+    </button>
+  );
+  return (
+    <div style={{ borderColor: "#d5dde6" }} className="border rounded-lg bg-white p-0.5 flex">
+      {btn("grid", LayoutGrid, "Grid view")}
+      {btn("list", ListIcon, "List view")}
+      {btn("map", MapIcon, "Map view")}
+    </div>
   );
 }
 
@@ -576,7 +680,7 @@ function ListingCard({ listing, isFav, toggleFav, onOpen, vertical = false }) {
   return (
     <div style={{ borderColor: C.border }} className={`border rounded-lg overflow-hidden bg-white hover:shadow-md transition flex flex-col ${vertical ? "h-full" : "sm:flex-row"}`}>
       <div className={`relative shrink-0 ${vertical ? "" : "sm:w-56"}`}>
-        <img src={img(listing.image, 500)} alt={listing.name} loading="lazy" className={`w-full h-44 object-cover ${vertical ? "" : "sm:h-full"}`} />
+        <img src={img(listing.image, 500)} alt={listing.name} loading="lazy" className={`w-full h-44 object-cover ${vertical ? "" : "sm:h-full"} ${listing.availability === "Fully booked" ? "saturate-50 opacity-90" : ""}`} />
                {(listing.featured || listing.listedByAgent) && (
           <div className="absolute top-2 left-2 flex flex-col gap-1 items-start">
             {listing.featured && (
@@ -607,9 +711,11 @@ function ListingCard({ listing, isFav, toggleFav, onOpen, vertical = false }) {
             <button onClick={() => onOpen(listing)} style={{ color: C.blue }} className="text-left font-bold text-base hover:underline">
               {listing.name}
             </button>
-            <p style={{ color: C.gray600 }} className="text-xs mt-1 flex items-center gap-1"><MapPin size={12} /> {listing.university}{distanceLabel(listing) && ` · ${distanceLabel(listing)}`}</p>
+            <p style={{ color: C.gray600 }} className="text-xs mt-1 flex items-start gap-1"><MapPin size={12} className="shrink-0 mt-0.5" /> <span>{listing.university}{distanceLabel(listing) && ` · ${distanceLabel(listing)}`}</span></p>
           </div>
-          <ScoreBadge score={listing.rating} size="sm" />
+          {(listing.reviewCount ?? (listing.reviews?.length || 0)) > 0
+            ? <ScoreBadge score={listing.rating} size="sm" />
+            : <Badge tone="blue">New</Badge>}
         </div>
 
         <div className="flex flex-wrap gap-1.5 mt-3">
@@ -650,8 +756,18 @@ function ListingCard({ listing, isFav, toggleFav, onOpen, vertical = false }) {
 --------------------------------------------------------- */
 function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, studentUniversity, universities }) {
   const [searchQuery, setSearchQuery] = useState("");
-  const [filters, setFilters] = useState({ priceMax: MAX_PRICE, roomTypes: [], propertyTypes: [], bath: "Any", kitchen: false, university: "Any" });
+  const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sort, setSort] = useState("recommended");
+  const [view, setViewState] = useState(() => {
+    try { const v = localStorage.getItem("bookinn:view"); return v === "list" || v === "map" ? v : "grid"; } catch { return "grid"; }
+  });
+  const [selectedId, setSelectedId] = useState(null);
+  const [hoverId, setHoverId] = useState(null);
+  const listColRef = useRef(null);
+  const setView = (v) => {
+    setViewState(v);
+    try { localStorage.setItem("bookinn:view", v); } catch { /* storage unavailable */ }
+  };
 
   const filtered = useMemo(() => {
     let out = listings.filter((l) => {
@@ -665,6 +781,7 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
       if (filters.propertyTypes.length && !filters.propertyTypes.includes(l.type)) return false;
       if (filters.bath !== "Any" && l.bath !== filters.bath) return false;
       if (filters.kitchen && !l.kitchen) return false;
+      if (filters.availableOnly && l.availability === "Fully booked") return false;
       // Students are already scoped to their own university server-side, so
       // this optional dropdown is only meaningful (and only shown) for
       // guests/parents browsing every campus at once.
@@ -674,6 +791,11 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
     if (sort === "price-asc") out = [...out].sort((a, b) => a.price - b.price);
     if (sort === "price-desc") out = [...out].sort((a, b) => b.price - a.price);
     if (sort === "rating") out = [...out].sort((a, b) => b.rating - a.rating);
+    // Keep fully-booked places at the bottom of the default ordering so people
+    // see rooms they can actually book first.
+    if (sort === "recommended") {
+      out = [...out.filter((l) => l.availability !== "Fully booked"), ...out.filter((l) => l.availability === "Fully booked")];
+    }
     return out;
   }, [listings, searchQuery, filters, sort, studentUniversity]);
 
@@ -681,11 +803,22 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
   // Featured-plan listing's homepagePlacement actually earns its keep: a dedicated
   // strip above the regular results, instead of just being a flag nothing reads.
   const isDefaultView = !searchQuery && filters.priceMax === MAX_PRICE && filters.roomTypes.length === 0
-    && filters.propertyTypes.length === 0 && filters.bath === "Any" && !filters.kitchen && filters.university === "Any";
+    && filters.propertyTypes.length === 0 && filters.bath === "Any" && !filters.kitchen && filters.university === "Any" && !filters.availableOnly;
   const featuredListings = useMemo(
     () => (isDefaultView ? listings.filter((l) => l.homepagePlacement) : []),
     [isDefaultView, listings]
   );
+
+  const located = useMemo(() => filtered.filter((l) => getListingCoords(l)), [filtered]);
+  const hasApproxPins = useMemo(() => located.some((l) => getListingCoords(l)?.approx), [located]);
+  const selectedListing = filtered.find((l) => l.id === selectedId) || null;
+
+  // Picking a pin scrolls the matching card into view in the side list.
+  useEffect(() => {
+    if (view !== "map" || selectedId == null || !listColRef.current) return;
+    const el = listColRef.current.querySelector(`[data-listing-id="${selectedId}"]`);
+    if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [selectedId, view]);
 
   return (
     <div>
@@ -717,19 +850,22 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
 
         <div>
           <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-            <h2 style={{ color: C.ink }} className="font-bold text-lg">{filtered.length} places to stay</h2>
-            <select
-              aria-label="Sort listings"
-              value={sort}
-              onChange={(e) => setSort(e.target.value)}
-              style={{ borderColor: C.border, color: C.ink }}
-              className="border rounded-md text-sm px-3 py-2 bg-white"
-            >
-              <option value="recommended">Sort: Recommended</option>
-              <option value="price-asc">Price: low to high</option>
-              <option value="price-desc">Price: high to low</option>
-              <option value="rating">Top rated</option>
-            </select>
+            <h2 style={{ color: C.ink }} className="font-bold text-lg">{filtered.length} place{filtered.length === 1 ? "" : "s"} to stay</h2>
+            <div className="flex items-center gap-2">
+              <select
+                aria-label="Sort listings"
+                value={sort}
+                onChange={(e) => setSort(e.target.value)}
+                style={{ borderColor: "#d5dde6", color: C.ink }}
+                className="border rounded-lg text-sm px-3 h-10 bg-white"
+              >
+                <option value="recommended">Sort: Recommended</option>
+                <option value="price-asc">Price: low to high</option>
+                <option value="price-desc">Price: high to low</option>
+                <option value="rating">Top rated</option>
+              </select>
+              <ViewToggle view={view} setView={setView} />
+            </div>
           </div>
 
           {loading && (
@@ -737,11 +873,68 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
               <p style={{ color: C.gray600 }} className="text-sm">Loading listings…</p>
             </div>
           )}
-          {!loading && filtered.length > 0 && (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {!loading && filtered.length > 0 && view !== "map" && (
+            <div className={view === "grid" ? "grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" : "flex flex-col gap-4"}>
               {filtered.map((l) => (
-                <ListingCard key={l.id} vertical listing={l} isFav={favorites.has(l.id)} toggleFav={toggleFav} onOpen={onOpenListing} />
+                <ListingCard key={l.id} vertical={view === "grid"} listing={l} isFav={favorites.has(l.id)} toggleFav={toggleFav} onOpen={onOpenListing} />
               ))}
+            </div>
+          )}
+          {!loading && filtered.length > 0 && view === "map" && (
+            <div>
+              {hasApproxPins && (
+                <p style={{ background: C.blueMist, borderColor: C.border, color: C.gray600 }} className="border rounded-md px-3 py-2 text-xs mb-3 flex items-start gap-1.5">
+                  <MapPin size={13} color={C.blue} className="shrink-0 mt-0.5" />
+                  <span>Pin positions are approximate and sit around each campus. Exact locations appear once a listing adds them.</span>
+                </p>
+              )}
+              <div className="md:grid md:grid-cols-[minmax(0,400px)_1fr] gap-4">
+                <div ref={listColRef} className="hidden md:flex flex-col gap-4 md:max-h-[calc(100vh-9rem)] overflow-y-auto pr-1 pb-1">
+                  {filtered.map((l) => (
+                    <div
+                      key={l.id}
+                      data-listing-id={l.id}
+                      onMouseEnter={() => setHoverId(l.id)}
+                      onMouseLeave={() => setHoverId(null)}
+                      onClick={() => setSelectedId(l.id)}
+                      className={`rounded-lg transition-shadow ${selectedId === l.id ? "ring-2 ring-[#0071c2]" : ""}`}
+                    >
+                      <ListingCard vertical listing={l} isFav={favorites.has(l.id)} toggleFav={toggleFav} onOpen={onOpenListing} />
+                    </div>
+                  ))}
+                </div>
+
+                <div style={{ borderColor: C.border }} className="relative border rounded-lg overflow-hidden h-[68vh] min-h-[420px] md:h-[calc(100vh-9rem)] md:sticky md:top-4">
+                  <React.Suspense fallback={<div style={{ color: C.gray600 }} className="w-full h-full flex items-center justify-center text-sm bg-white">Loading map…</div>}>
+                    <ListingsMap listings={filtered} selectedId={selectedId} hoverId={hoverId} onSelect={setSelectedId} />
+                  </React.Suspense>
+
+                  {located.length < filtered.length && (
+                    <div style={{ color: C.gray600 }} className="absolute top-3 left-3 z-[1000] bg-white/95 rounded-md shadow px-2.5 py-1.5 text-xs">
+                      {filtered.length - located.length} without a map location
+                    </div>
+                  )}
+
+                  {/* Phone: tapping a pin shows a compact preview, since the side list is hidden */}
+                  {selectedListing && (
+                    <div className="md:hidden absolute left-3 right-3 bottom-3 z-[1000] bg-white rounded-xl shadow-xl flex overflow-hidden">
+                      <img src={img(selectedListing.image, 300)} alt="" className="w-28 h-28 object-cover shrink-0" />
+                      <div className="p-3 flex-1 min-w-0 flex flex-col">
+                        <p style={{ color: C.ink }} className="font-bold text-sm truncate">{selectedListing.name}</p>
+                        <p style={{ color: C.gray600 }} className="text-xs truncate">{selectedListing.university}</p>
+                        <p style={{ color: C.ink }} className="font-extrabold text-base mt-auto">
+                          GH₵{selectedListing.price.toLocaleString()}
+                          <span style={{ color: C.gray600 }} className="text-xs font-medium"> · {selectedListing.pricingPeriod || "Per semester"}</span>
+                        </p>
+                        <button type="button" onClick={() => onOpenListing(selectedListing)} style={{ color: C.blue }} className="text-left text-sm font-semibold">View room</button>
+                      </div>
+                      <button type="button" onClick={() => setSelectedId(null)} aria-label="Close preview" className="absolute top-1.5 right-1.5 w-7 h-7 rounded-full bg-white/90 flex items-center justify-center">
+                        <X size={14} color={C.ink} />
+                      </button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           )}
           {!loading && filtered.length === 0 && (
