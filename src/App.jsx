@@ -1334,8 +1334,22 @@ function ContactModal({ listing, roomType, onClose, initialGroupCode = "" }) {
                   style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
                 <input placeholder="Email address" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })}
                   style={{ borderColor: C.border }} className="border rounded-md px-3 py-2 text-sm outline-none" />
-                <input type="date" value={form.moveIn} onChange={(e) => setForm({ ...form, moveIn: e.target.value })}
-                  style={{ borderColor: C.border, color: C.ink }} className="border rounded-md px-3 py-2 text-sm outline-none" />
+                <div className="relative">
+                  <input type="date" value={form.moveIn} onChange={(e) => setForm({ ...form, moveIn: e.target.value })}
+                    aria-label="Move-in date"
+                    style={{
+                      borderColor: C.border, color: C.ink, background: "#fff",
+                      WebkitAppearance: "none", appearance: "none",
+                      display: "block", width: "100%", minHeight: 38, textAlign: "left",
+                    }}
+                    className="border rounded-md px-3 py-2 text-sm outline-none" />
+                  {!form.moveIn && (
+                    <span style={{ color: C.gray600 }}
+                      className="absolute left-3 top-1/2 -translate-y-1/2 text-sm pointer-events-none">
+                      Move-in date (optional)
+                    </span>
+                  )}
+                </div>
                 </>)}
                 {groupCapacity > 0 && (
                   <div style={{ borderColor: C.border, background: C.blueLight }} className="border rounded-md p-3">
