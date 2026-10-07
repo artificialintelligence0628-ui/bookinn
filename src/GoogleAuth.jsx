@@ -55,7 +55,7 @@ function ensureInitialized() {
  * of every page, and returning visitors are signed in automatically.
  * onCredential(idToken) receives Google's signed ID token.
  */
-export function GoogleOneTap({ enabled, onCredential }) {
+export function GoogleOneTap({ enabled, onCredential, onUnavailable }) {
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID || !enabled) return undefined;
     let cancelled = false;
@@ -64,9 +64,17 @@ export function GoogleOneTap({ enabled, onCredential }) {
       .then(() => {
         if (cancelled) return;
         ensureInitialized();
-        window.google.accounts.id.prompt();
+        window.google.accounts.id.prompt((n) => {
+          // Safari/iOS (tracking protection), blocked cookies, or a Google cooldown can
+          // stop One Tap from showing — let the app offer its own sign-in sheet instead.
+          try {
+            if (cancelled || !onUnavailable) return;
+            if (n.isDismissedMoment?.()) return;
+            if (n.isNotDisplayed?.() || n.isSkippedMoment?.()) onUnavailable();
+          } catch { /* ignore */ }
+        });
       })
-      .catch(() => { /* script blocked/offline — the normal sign-in screen still works */ });
+      .catch(() => { if (!cancelled && onUnavailable) onUnavailable(); });
     return () => {
       cancelled = true;
       if (activeHandler === onCredential) activeHandler = null;
@@ -127,4 +135,28 @@ export default function GoogleAuthButton({ onCredential, text = "continue_with",
 
   if (!GOOGLE_CLIENT_ID || failed) return null;
   return <div ref={holder} className="w-full flex justify-center min-h-[44px]" />;
+}
+
+
+/**
+ * Fallback bottom sheet shown when Google's One Tap can't appear (common on
+ * iPhone Safari). Same Google sign-in underneath, just our own container.
+ */
+export function GoogleSignInSheet({ onCredential, onClose }) {
+  if (!GOOGLE_CLIENT_ID) return null;
+  return (
+    <div
+      style={{ position: "fixed", left: 0, right: 0, bottom: 0, zIndex: 60, background: "#fff", boxShadow: "0 -8px 30px rgba(0,0,0,0.18)", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: "16px 16px calc(16px + env(safe-area-inset-bottom))" }}
+      role="dialog" aria-label="Sign in to BookInn"
+    >
+      <div className="flex items-start justify-between mb-3">
+        <div>
+          <div className="text-base font-extrabold">Sign in to BookInn</div>
+          <div className="text-xs text-gray-500">Save hostels and contact owners faster.</div>
+        </div>
+        <button onClick={onClose} aria-label="Close" className="text-gray-400 text-2xl leading-none px-1">×</button>
+      </div>
+      <GoogleAuthButton onCredential={onCredential} text="continue_with" />
+    </div>
+  );
 }
