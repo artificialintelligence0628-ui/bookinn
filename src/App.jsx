@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { api } from "./api.js";
 import PlatformAdminEmails from "./AdminEmails.jsx";
-import GoogleAuthButton, { GOOGLE_CLIENT_ID, GoogleOneTap, disableGoogleAutoSelect } from "./GoogleAuth.jsx";
+import GoogleAuthButton, { GOOGLE_CLIENT_ID, GoogleOneTap, GoogleSignInSheet, disableGoogleAutoSelect } from "./GoogleAuth.jsx";
 import { PrivacyPolicyView, TermsView, CookiePolicyView } from "./LegalPages.jsx";
 import { C } from "./theme.js";
 import { getListingCoords } from "./mapCoords.js";
@@ -4868,6 +4868,7 @@ export default function App() {
   const [token, setToken] = useState(null);
   const [sessionChecked, setSessionChecked] = useState(false);
   const [oneTapPending, setOneTapPending] = useState(null);
+  const [showGoogleSheet, setShowGoogleSheet] = useState(false);
   const [authRedirect, setAuthRedirect] = useState(null);
   const [ownerStats, setOwnerStats] = useState(null);
   const [ownerStatsLoading, setOwnerStatsLoading] = useState(false);
@@ -4991,7 +4992,16 @@ export default function App() {
   // Google One Tap (the account popup at the top right). Only offered once we
   // know nobody is signed in, and not on screens that run their own Google flow.
   const oneTapEnabled = sessionChecked && !user && !["login", "forgot-password", "reset-password", "verify-email", "platform-admin"].includes(view);
+  const closeGoogleSheet = () => {
+    setShowGoogleSheet(false);
+    try { sessionStorage.setItem("bookinn:gsheet-dismissed", "1"); } catch { /* storage unavailable */ }
+  };
+  const handleOneTapUnavailable = () => {
+    try { if (sessionStorage.getItem("bookinn:gsheet-dismissed")) return; } catch { /* storage unavailable */ }
+    setShowGoogleSheet(true);
+  };
   const handleOneTapCredential = async (credential) => {
+    setShowGoogleSheet(false);
     try {
       const data = await api.googleAuth(credential);
       if (data.status === "needs_signup") {
@@ -5169,7 +5179,8 @@ export default function App() {
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: C.blueMist, minHeight: "100vh" }} className="flex flex-col">
       <style>{FONT_IMPORT}</style>
-      <GoogleOneTap enabled={oneTapEnabled} onCredential={handleOneTapCredential} />
+      <GoogleOneTap enabled={oneTapEnabled} onCredential={handleOneTapCredential} onUnavailable={handleOneTapUnavailable} />
+      {oneTapEnabled && showGoogleSheet && <GoogleSignInSheet onCredential={handleOneTapCredential} onClose={closeGoogleSheet} />}
       <Header
         view={view} setView={(v) => { setView(v); setMobileOpen(false); }} favCount={favorites.size}
         mobileOpen={mobileOpen} setMobileOpen={setMobileOpen}
