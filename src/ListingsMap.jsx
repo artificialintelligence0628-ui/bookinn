@@ -10,7 +10,9 @@ function pinIcon(listing, active) {
   const bg = active ? "#003580" : booked ? "#eef1f4" : "#ffffff";
   const fg = active ? "#ffffff" : booked ? "#6b6b6b" : "#1a1a1a";
   const border = active ? "#003580" : booked ? "#c9d1d9" : "#0071c2";
-  const price = `GH\u20B5${Math.round(Number(listing.price) || 0).toLocaleString()}`;
+  const price = listing.hidePrice || listing.price == null
+    ? "Ask"
+    : `GH\u20B5${Math.round(Number(listing.price) || 0).toLocaleString()}`;
   return L.divIcon({
     className: "bk-pin",
     iconSize: [0, 0],
