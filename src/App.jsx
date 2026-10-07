@@ -740,10 +740,14 @@ function ListingCard({ listing, isFav, toggleFav, onOpen, vertical = false }) {
         <div className="mt-auto pt-4 flex items-end justify-between flex-wrap gap-3">
           <div>
             <p style={{ color: C.gray600 }} className="text-xs">{listing.reviewCount ?? (listing.reviews?.length || 0)} student reviews</p>
-            <p style={{ color: C.ink }} className="text-xl font-extrabold">
-              {listing.roomOptions?.length > 1 && <span className="text-sm font-medium" style={{ color: C.gray600 }}>From </span>}
-              GH₵{listing.price.toLocaleString()}<span className="text-sm font-medium" style={{ color: C.gray600 }}> · {listing.pricingPeriod || "Per semester"}</span>
-            </p>
+            {listing.hidePrice ? (
+              <p style={{ color: C.ink }} className="text-lg font-extrabold">Contact for price</p>
+            ) : (
+              <p style={{ color: C.ink }} className="text-xl font-extrabold">
+                {listing.roomOptions?.length > 1 && <span className="text-sm font-medium" style={{ color: C.gray600 }}>From </span>}
+                GH₵{listing.price.toLocaleString()}<span className="text-sm font-medium" style={{ color: C.gray600 }}> · {listing.pricingPeriod || "Per semester"}</span>
+              </p>
+            )}
           </div>
           <PrimaryButton onClick={() => onOpen(listing)}>View room</PrimaryButton>
         </div>
@@ -773,7 +777,7 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
   const filtered = useMemo(() => {
     let out = listings.filter((l) => {
       if (searchQuery && !l.name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
-      if (l.price > filters.priceMax) return false;
+      if (!l.hidePrice && l.price > filters.priceMax) return false; // "Contact for price" listings aren't filtered by budget
       if (filters.roomTypes.length) {
         const types = (l.roomOptions || []).map((r) => r.roomType);
         const hasMatch = types.length ? types.some((t) => filters.roomTypes.includes(t)) : filters.roomTypes.includes(l.roomType);
@@ -789,8 +793,15 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
       if (!studentUniversity && filters.university !== "Any" && l.university !== filters.university) return false;
       return true;
     });
-    if (sort === "price-asc") out = [...out].sort((a, b) => a.price - b.price);
-    if (sort === "price-desc") out = [...out].sort((a, b) => b.price - a.price);
+    // "Contact for price" listings have no price to compare, so they always go last.
+    if (sort === "price-asc" || sort === "price-desc") {
+      const dir = sort === "price-asc" ? 1 : -1;
+      out = [...out].sort((a, b) => {
+        if (a.hidePrice !== b.hidePrice) return a.hidePrice ? 1 : -1;
+        if (a.hidePrice) return 0;
+        return (a.price - b.price) * dir;
+      });
+    }
     if (sort === "rating") out = [...out].sort((a, b) => b.rating - a.rating);
     // Keep fully-booked places at the bottom of the default ordering so people
     // see rooms they can actually book first.
@@ -927,8 +938,12 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
                         <p style={{ color: C.ink }} className="font-bold text-sm truncate">{selectedListing.name}</p>
                         <p style={{ color: C.gray600 }} className="text-xs truncate">{selectedListing.university}</p>
                         <p style={{ color: C.ink }} className="font-extrabold text-base mt-auto">
-                          GH₵{selectedListing.price.toLocaleString()}
-                          <span style={{ color: C.gray600 }} className="text-xs font-medium"> · {selectedListing.pricingPeriod || "Per semester"}</span>
+                          {selectedListing.hidePrice ? "Contact for price" : (
+                            <>
+                              GH₵{selectedListing.price.toLocaleString()}
+                              <span style={{ color: C.gray600 }} className="text-xs font-medium"> · {selectedListing.pricingPeriod || "Per semester"}</span>
+                            </>
+                          )}
                         </p>
                         <button type="button" onClick={() => onOpenListing(selectedListing)} style={{ color: C.blue }} className="text-left text-sm font-semibold">View room</button>
                       </div>
@@ -1522,6 +1537,7 @@ function DeepLinkNotice({ status, onBrowse }) {
   }, [listing.id]);
 
   const selectedPrice = roomOptions.find((r) => r.roomType === selectedRoom)?.price ?? listing.price;
+  const priceHidden = !!listing.hidePrice || selectedPrice == null;
 
   return (
     <div className="max-w-6xl mx-auto px-4 md:px-6 py-6">
@@ -1691,7 +1707,14 @@ function DeepLinkNotice({ status, onBrowse }) {
 
         {/* Booking sidebar */}
         <div style={{ borderColor: C.border }} className="border rounded-lg p-5 h-fit md:sticky md:top-4">
-          <p style={{ color: C.ink }} className="text-2xl font-extrabold">GH₵{selectedPrice.toLocaleString()}<span className="text-sm font-medium" style={{ color: C.gray600 }}> · {listing.pricingPeriod || "Per semester"}</span></p>
+          {priceHidden ? (
+            <>
+              <p style={{ color: C.ink }} className="text-2xl font-extrabold">Contact for price</p>
+              <p style={{ color: C.gray600 }} className="text-xs mt-1">Send a booking request and the {listing.listedByAgent ? "agent" : "owner"} will share the price with you.</p>
+            </>
+          ) : (
+            <p style={{ color: C.ink }} className="text-2xl font-extrabold">GH₵{selectedPrice.toLocaleString()}<span className="text-sm font-medium" style={{ color: C.gray600 }}> · {listing.pricingPeriod || "Per semester"}</span></p>
+          )}
           <p style={{ color: listing.availability === "Fully booked" ? "#b3261e" : listing.availability === "Partly booked" ? C.yellowDark : C.green }} className="text-xs font-semibold mt-1 flex items-center gap-1">
             <BadgeCheck size={14} /> {listing.availability || "Space available"}
           </p>
@@ -1709,7 +1732,7 @@ function DeepLinkNotice({ status, onBrowse }) {
                 className="border rounded-md px-3 py-2 text-sm outline-none w-full"
               >
                 {roomOptions.map((r) => (
-                  <option key={r.roomType} value={r.roomType}>{r.roomType} — GH₵{r.price.toLocaleString()}{r.availability ? ` (${r.availability})` : ""}</option>
+                  <option key={r.roomType} value={r.roomType}>{r.roomType}{priceHidden || r.price == null ? "" : ` — GH₵${r.price.toLocaleString()}`}{r.availability ? ` (${r.availability})` : ""}</option>
                 ))}
               </select>
             </div>
@@ -1878,7 +1901,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
     kitchen: false, featured: false, amenities: [], imageData: "", galleryData: [], videoData: "",
     walkthrough: [], uploadingImage: false, uploadingGallery: false, uploadingVideo: false, uploadingWalkthrough: {},
     desc: "", locationDescription: "", pin: null, travelKm: "", travelMinutes: "", travelMode: "walk", pricingPeriod: "Per semester",
-    ownerEmail: "", ownerWhatsapp: "", availability: AVAILABILITY_STATUSES[0],
+    ownerEmail: "", ownerWhatsapp: "", availability: AVAILABILITY_STATUSES[0], hidePrice: false,
     // Hostel room categories: owner ticks every occupancy their hostel actually offers
     // (e.g. both "Two in a room" and "Four in a room") and sets a price for each.
     hostelRooms: HOSTEL_ROOM_TYPES.map((rt) => ({ roomType: rt, checked: false, price: "", availability: AVAILABILITY_STATUSES[0] })),
@@ -2076,6 +2099,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
       ownerEmail: listing.ownerEmail || "",
       ownerWhatsapp: listing.ownerWhatsapp || "",
       availability: listing.availability || AVAILABILITY_STATUSES[0],
+      hidePrice: !!listing.hidePrice,
       travelKm: distanceMatch && distanceMatch[1] ? distanceMatch[1] : "",
       travelMinutes: distanceMatch ? distanceMatch[2] : "",
       travelMode: distanceMatch ? distanceMatch[3].toLowerCase() : "walk",
@@ -2147,6 +2171,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
         lat: form.pin ? form.pin.lat : null, lng: form.pin ? form.pin.lng : null,
         walkthrough: form.walkthrough.filter((s) => s.image),
         ownerEmail: form.ownerEmail, ownerWhatsapp: form.ownerWhatsapp, availability: form.availability,
+        hidePrice: !!form.hidePrice,
         distance,
       };
       if (editingId) {
@@ -2443,6 +2468,17 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
             </div>
           )}
 
+          <label
+            style={{ borderColor: form.hidePrice ? C.blue : C.border, background: form.hidePrice ? C.blueLight : C.white }}
+            className="border rounded-md p-3 mb-4 flex items-start gap-2.5 cursor-pointer"
+          >
+            <input type="checkbox" checked={!!form.hidePrice} onChange={(e) => setForm({ ...form, hidePrice: e.target.checked })} style={{ accentColor: C.blue }} className="mt-0.5" />
+            <span>
+              <span style={{ color: C.ink }} className="text-sm font-semibold block">Hide price — show "Contact for price"</span>
+              <span style={{ color: C.gray600 }} className="text-xs block mt-0.5">Students won't see your price anywhere (listing, map or search results) and will ask you for it in their booking request. You still enter a price above, and you'll always see it in your dashboard.</span>
+            </span>
+          </label>
+
           <div className="mb-4 flex flex-wrap gap-4">
             <label className="flex items-center gap-2 text-sm cursor-pointer" style={{ color: C.gray600 }}>
               <input type="checkbox" checked={form.kitchen} onChange={(e) => setForm({ ...form, kitchen: e.target.checked })} style={{ accentColor: C.blue }} />
@@ -2650,6 +2686,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                 </div>
               ))}
               <p style={{ color: C.gray600 }} className="text-xs">{l.pricingPeriod || "Per semester"}</p>
+              {l.hidePrice && <p style={{ color: C.blue }} className="text-[11px] font-semibold">Hidden from students — shows "Contact for price"</p>}
               {l.photosOverLimit > 0 && (
                 <p style={{ color: C.yellowDark }} className="text-[11px]">{l.photosOverLimit} photo{l.photosOverLimit > 1 ? "s" : ""} hidden over plan limit</p>
               )}
@@ -2716,6 +2753,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
                     {(l.roomOptions || []).map((r) => (
                       <span key={r.roomType} className="block text-xs">{r.roomType}: <span className="font-semibold">GH₵{Number(r.price).toLocaleString()}</span></span>
                     ))}
+                    {l.hidePrice && <span style={{ color: C.blue }} className="text-[11px] font-semibold block">Price hidden from students</span>}
                     <span style={{ color: C.gray600 }} className="text-xs block">{l.pricingPeriod || "Per semester"}</span>
                   </td>
                   <td className="py-2.5 px-4">
@@ -3822,7 +3860,7 @@ function PlatformAdminView({ token, onManageOwner }) {
         api.getAdminStats(token),
         api.getAdminUsers(token),
         api.getInquiries(token),
-        api.getListings(),
+        api.getAdminListings(token),
         api.getUniversities(),
       ]);
       setStats(statsData);
@@ -3838,9 +3876,9 @@ function PlatformAdminView({ token, onManageOwner }) {
   }, [token]);
 
   const refreshListings = React.useCallback(async () => {
-    const data = await api.getListings();
+    const data = await api.getAdminListings(token);
     setListings(data.listings);
-  }, []);
+  }, [token]);
 
   React.useEffect(() => {
     if (tab === "overview" || tab === "listings" || tab === "universities" || tab === "publichostels") loadAll();
@@ -4256,7 +4294,7 @@ function PlatformAdminView({ token, onManageOwner }) {
           : <span style={{ color: C.gray600 }} className="text-xs">Owner</span>
       ),
     },
-    { key: "price", label: "Price", render: (l) => `GH₵${Number(l.price).toLocaleString()}` },
+    { key: "price", label: "Price", render: (l) => `GH₵${Number(l.price).toLocaleString()}${l.hidePrice ? " (hidden)" : ""}` },
     { key: "ownerEmail", label: "Contact email", render: (l) => l.ownerEmail || <span style={{ color: C.gray400 }}>—</span> },
     { key: "featured", label: "Featured", render: (l) => (l.featured ? <BadgeCheck size={16} color={C.blue} /> : <span style={{ color: C.gray400 }}>—</span>) },
     { key: "rating", label: "Rating", render: (l) => l.rating ? `${l.rating} ★ (${l.reviewCount || 0})` : "No reviews yet" },
