@@ -41,11 +41,48 @@ function ensureInitialized() {
   window.google.accounts.id.initialize({
     client_id: GOOGLE_CLIENT_ID,
     callback: (resp) => { if (resp?.credential && activeHandler) activeHandler(resp.credential); },
-    auto_select: false,            // always let the person choose the account
+    auto_select: true,             // returning visitors with one remembered Google session are signed in automatically
     cancel_on_tap_outside: true,
     use_fedcm_for_prompt: true,    // browser-native account chooser where supported
   });
   initialized = true;
+}
+
+/**
+ * Site-wide Google One Tap. Mount it once near the top of the app: while
+ * `enabled` is true (signed out, session check finished, not on a screen that
+ * has its own Google button) Google's account popup slides in at the top right
+ * of every page, and returning visitors are signed in automatically.
+ * onCredential(idToken) receives Google's signed ID token.
+ */
+export function GoogleOneTap({ enabled, onCredential }) {
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID || !enabled) return undefined;
+    let cancelled = false;
+    activeHandler = onCredential;
+    loadGoogleScript()
+      .then(() => {
+        if (cancelled) return;
+        ensureInitialized();
+        window.google.accounts.id.prompt();
+      })
+      .catch(() => { /* script blocked/offline — the normal sign-in screen still works */ });
+    return () => {
+      cancelled = true;
+      if (activeHandler === onCredential) activeHandler = null;
+      if (window.google?.accounts?.id) window.google.accounts.id.cancel();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [enabled]);
+
+  // Keep the live handler current without re-prompting.
+  useEffect(() => { if (GOOGLE_CLIENT_ID && enabled) activeHandler = onCredential; });
+  return null;
+}
+
+/** Call on sign-out so One Tap doesn't instantly sign the person back in. */
+export function disableGoogleAutoSelect() {
+  try { window.google?.accounts?.id?.disableAutoSelect(); } catch { /* not loaded */ }
 }
 
 /**
