@@ -235,3 +235,7 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS terms_accepted_at TIMESTAMPTZ;
 -- approximate spot near the campus for listings without one.
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS lat DOUBLE PRECISION;
 ALTER TABLE listings ADD COLUMN IF NOT EXISTS lng DOUBLE PRECISION;
+
+-- Owner/agent can choose to show "Contact for price" instead of the price to students.
+-- The real price is still stored (the system needs one); it is stripped from public API output.
+ALTER TABLE listings ADD COLUMN IF NOT EXISTS hide_price BOOLEAN NOT NULL DEFAULT false;
