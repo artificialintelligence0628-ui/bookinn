@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { api } from "./api.js";
 import PlatformAdminEmails from "./AdminEmails.jsx";
-import GoogleAuthButton, { GOOGLE_CLIENT_ID } from "./GoogleAuth.jsx";
+import GoogleAuthButton, { GOOGLE_CLIENT_ID, GoogleOneTap, disableGoogleAutoSelect } from "./GoogleAuth.jsx";
 import { PrivacyPolicyView, TermsView, CookiePolicyView } from "./LegalPages.jsx";
 import { C } from "./theme.js";
 import { getListingCoords } from "./mapCoords.js";
@@ -2841,7 +2841,7 @@ function SignupConsent({ agreed, setAgreed, marketing, setMarketing }) {
 /* ---------------------------------------------------------
    LOGIN VIEW
 --------------------------------------------------------- */
-function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities }) {
+function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities, initialGooglePending = null }) {
   const [mode, setMode] = useState("signin");
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
@@ -2867,7 +2867,7 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
   // Set when someone picks a Google account that has no BookInn account yet —
   // we keep Google's token and ask for their account type (and campus) before
   // creating it.
-  const [googlePending, setGooglePending] = useState(null); // { credential, name, email }
+  const [googlePending, setGooglePending] = useState(initialGooglePending); // { credential, name, email }
 
   const handleGoogleCredential = async (credential) => {
     setError("");
@@ -4866,6 +4866,8 @@ export default function App() {
   const [listingsError, setListingsError] = useState("");
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
+  const [sessionChecked, setSessionChecked] = useState(false);
+  const [oneTapPending, setOneTapPending] = useState(null);
   const [authRedirect, setAuthRedirect] = useState(null);
   const [ownerStats, setOwnerStats] = useState(null);
   const [ownerStatsLoading, setOwnerStatsLoading] = useState(false);
@@ -4979,11 +4981,32 @@ export default function App() {
   // Restore a saved session (if any) and verify it's still valid.
   React.useEffect(() => {
     const savedToken = localStorage.getItem("bookinn_token");
-    if (!savedToken) return;
+    if (!savedToken) { setSessionChecked(true); return; }
     api.me(savedToken)
       .then((data) => { setToken(savedToken); setUser(data.user); })
-      .catch(() => localStorage.removeItem("bookinn_token"));
+      .catch(() => localStorage.removeItem("bookinn_token"))
+      .finally(() => setSessionChecked(true));
   }, []);
+
+  // Google One Tap (the account popup at the top right). Only offered once we
+  // know nobody is signed in, and not on screens that run their own Google flow.
+  const oneTapEnabled = sessionChecked && !user && !["login", "forgot-password", "reset-password", "verify-email", "platform-admin"].includes(view);
+  const handleOneTapCredential = async (credential) => {
+    try {
+      const data = await api.googleAuth(credential);
+      if (data.status === "needs_signup") {
+        // Brand-new person: finish account creation (role/campus/terms) on the sign-in screen.
+        setOneTapPending({ credential, name: data.name, email: data.email });
+        setAuthRedirect(view === "detail" ? "detail" : null);
+        setView("login");
+      } else {
+        // Existing account: sign in quietly and leave them on the page they're viewing.
+        setUser(data.user);
+        setToken(data.token);
+        localStorage.setItem("bookinn_token", data.token);
+      }
+    } catch { /* ignore — they can still sign in manually */ }
+  };
 
   const refreshOwnerStats = React.useCallback(() => {
     if (!token || !isListingManagerRole(user?.role)) { setOwnerStats(null); return; }
@@ -5126,6 +5149,7 @@ export default function App() {
   };
 
   const handleSignOut = () => {
+    disableGoogleAutoSelect();
     setUser(null);
     setToken(null);
     localStorage.removeItem("bookinn_token");
@@ -5145,6 +5169,7 @@ export default function App() {
   return (
     <div style={{ fontFamily: "'Inter', system-ui, sans-serif", background: C.blueMist, minHeight: "100vh" }} className="flex flex-col">
       <style>{FONT_IMPORT}</style>
+      <GoogleOneTap enabled={oneTapEnabled} onCredential={handleOneTapCredential} />
       <Header
         view={view} setView={(v) => { setView(v); setMobileOpen(false); }} favCount={favorites.size}
         mobileOpen={mobileOpen} setMobileOpen={setMobileOpen}
@@ -5216,6 +5241,7 @@ export default function App() {
               undefined
             }
             universities={universities}
+            initialGooglePending={oneTapPending}
           />
         )}
         {view === "forgot-password" && <ForgotPasswordView setView={setView} />}
