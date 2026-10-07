@@ -643,7 +643,7 @@ function enforcePlanOnListingPayload(view, l) {
 // downgrade takes effect immediately even on a listing that was saved while on a
 // higher plan), and attaches search-ranking/badge info. Returns null when the
 // listing should not be shown publicly at all.
-function toPublicListing(listing, owner) {
+function toPublicListing(listing, owner, { keepPrice = false } = {}) {
   // Admin-managed public hostels are always visible with full features — they
   // don't depend on any owner subscription.
   const view = listing.isPublic
@@ -652,8 +652,19 @@ function toPublicListing(listing, owner) {
   if (!view.isListingVisible) return null;
   const { features, effectivePlan } = view;
   const cap = features.maxPhotos ?? 0;
+  // "Contact for price": the owner/agent chose not to show a price. Strip it here — the one
+  // choke point every public response goes through — so it can't be read from the API
+  // response either, not just hidden in the UI. Room categories and availability stay.
+  const priceHidden = !!listing.hidePrice && !keepPrice;
+  const hiddenPriceFields = priceHidden
+    ? {
+        price: null,
+        roomOptions: (listing.roomOptions || []).map(({ price, ...rest }) => rest),
+      }
+    : {};
   return {
     ...listing,
+    ...hiddenPriceFields,
     images: (listing.images || []).slice(0, cap),
     video: features.videoTour ? (listing.video || "") : "",
     ownerWhatsapp: features.whatsappEnquiries ? (listing.ownerWhatsapp || "") : "",
@@ -688,7 +699,7 @@ function visibleListingIdsForOwner(user, ownerListings) {
   return new Set(ids);
 }
 
-app.get("/api/listings", ah(async (req, res) => {
+async function buildListingFeed({ university, keepPrice = false } = {}) {
   const all = await store.getListings();
   const byOwner = {};
   all.forEach((l) => { (byOwner[l.ownerId] ||= []).push(l); });
@@ -705,15 +716,23 @@ app.get("/api/listings", ah(async (req, res) => {
   });
   let listings = all
     .filter((l) => l.isPublic || visibleIds.has(l.id))
-    .map((l) => toPublicListing(l, ownerById.get(l.ownerId)))
+    .map((l) => toPublicListing(l, ownerById.get(l.ownerId), { keepPrice }))
     .filter(Boolean)
     .sort((a, b) => b.searchPriority - a.searchPriority);
   // Optional ?university= filter — used to scope a logged-in student's browse
   // view to their own campus so they never see (or open) another school's listings.
-  if (req.query.university) {
-    listings = listings.filter((l) => l.university === req.query.university);
-  }
-  res.json({ listings });
+  if (university) listings = listings.filter((l) => l.university === university);
+  return listings;
+}
+
+app.get("/api/listings", ah(async (req, res) => {
+  res.json({ listings: await buildListingFeed({ university: req.query.university }) });
+}));
+
+// Same feed for the admin dashboard, but with real prices kept even where the owner chose
+// "Contact for price" — admins need them to edit public hostels and review listings.
+app.get("/api/admin/listings", requireAuth, requireAdmin, ah(async (req, res) => {
+  res.json({ listings: await buildListingFeed({ keepPrice: true }) });
 }));
 
 // One public listing by id — powers shareable links like bookinngh.com/listing/12-bae-dream.
@@ -822,6 +841,7 @@ app.post("/api/listings", requireAuth, requireCanCreateListing, ah(async (req, r
     reviews: [],
     lat: coords.lat ?? null,
     lng: coords.lng ?? null,
+    hidePrice: !!l.hidePrice,
   });
   const updatedUser = await store.getUserById(req.user.sub);
   res.status(201).json({ listing, user: publicUser(updatedUser) });
@@ -870,6 +890,7 @@ app.put("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing
     ownerEmail: l.ownerEmail || "",
     ownerWhatsapp: l.ownerWhatsapp || "",
     availability: ["Space available", "Partly booked", "Fully booked"].includes(l.availability) ? l.availability : "Space available",
+    hidePrice: !!l.hidePrice,
   };
   const updated = await store.updateListing(id, patch);
   if (!updated) return res.status(404).json({ error: "Listing not found." });
@@ -1284,6 +1305,7 @@ function buildPublicListingFields(l) {
       ownerEmail: l.ownerEmail || "",
       ownerWhatsapp: l.ownerWhatsapp || "",
       availability: ["Space available", "Partly booked", "Fully booked"].includes(l.availability) ? l.availability : "Space available",
+      hidePrice: !!l.hidePrice,
     },
   };
 }
@@ -1776,7 +1798,9 @@ app.get(/^\/listing\/(\d+)(?:-[^/]*)?\/?$/, ah(async (req, res, next) => {
   if (!listing) return res.type("html").send(html);
 
   const title = `${listing.name} — ${listing.university} | BookInn`;
-  const rooms = Array.isArray(listing.roomOptions) && listing.roomOptions.length
+  const rooms = listing.hidePrice
+    ? "Contact for price"
+    : Array.isArray(listing.roomOptions) && listing.roomOptions.length
     ? `From GH₵${Math.min(...listing.roomOptions.map((r) => Number(r.price) || listing.price))}`
     : `GH₵${listing.price}`;
   const descRaw = `${rooms} · ${listing.type} near ${listing.university}. ${listing.desc || ""}`.replace(/\s+/g, " ").trim();
