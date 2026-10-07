@@ -40,6 +40,7 @@ export const api = {
   // Pass a university to scope results to just that campus (used for logged-in
   // students so they only ever see their own school's hostels/apartments).
   getListing: (id) => request(`/listings/${id}`),
+  getAdminListings: (token) => request("/admin/listings", { token }),
   getListings: (university) => request(university ? `/listings?university=${encodeURIComponent(university)}` : "/listings"),
   uploadFile,
   addListing: (listing, token) => request("/listings", { method: "POST", body: listing, token }),
