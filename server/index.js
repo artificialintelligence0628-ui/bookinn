@@ -13,6 +13,7 @@ import { fileURLToPath } from "url";
 import { store } from "./store.js";
 import { migrate } from "./db.js";
 import { FULL_FEATURES, maxListingsForView, computeSubscriptionView } from "./plans.js";
+import { SEO_PAGES, seoPagePath, matchesSeoPage } from "../shared/seoPages.js";
 import { uploadBuffer, cloudinaryConfigured } from "./cloudinary.js";
 import crypto from "crypto";
 import { sendPasswordResetEmail, sendVerificationEmail, emailConfigured, personalizeContent, buildBrandedEmailHtml } from "./email.js";
@@ -1825,6 +1826,46 @@ app.get(/^\/listing\/(\d+)(?:-[^/]*)?\/?$/, ah(async (req, res, next) => {
     .replace("</head>", () => `    ${tags}\n  </head>`);
   res.type("html").send(out);
 }));
+
+// SEO landing pages (/hostels-near-knust, /hostels-in-ayeduase, ...). Same single-page app,
+// but each address gets its own title, description, canonical link and a plain-HTML
+// heading + intro + links inside #root, so Google sees real content without running
+// JavaScript (React replaces it the moment the app loads). A page with no matching
+// listings yet is marked noindex so Google isn't asked to rank an empty page.
+for (const page of SEO_PAGES) {
+  app.get(seoPagePath(page), ah(async (req, res, next) => {
+    let html;
+    try { html = readIndexHtml(); } catch { return next(); } // no build yet (local dev)
+    let count = 0;
+    try { count = (await buildListingFeed({})).filter((l) => matchesSeoPage(l, page)).length; } catch { /* treat as unknown, still serve the page */ count = 1; }
+
+    const url = `${SITE_URL}${seoPagePath(page)}`;
+    const related = SEO_PAGES.filter((p) => page.related.includes(p.slug));
+    const links = [...related, ...SEO_PAGES.filter((p) => p.kind === "campus" && p.slug !== page.slug && !page.related.includes(p.slug))]
+      .map((p) => `<li><a href="${seoPagePath(p)}">${escHtml(p.h1)}</a></li>`).join("");
+    const body = `<main style="max-width:48rem;margin:0 auto;padding:2rem 1rem;font-family:system-ui,sans-serif">`
+      + `<h1>${escHtml(page.h1)}</h1><p>${escHtml(page.intro)}</p>`
+      + `<h2>More student accommodation searches</h2><ul>${links}</ul></main>`;
+    const tags = [
+      `<meta property="og:type" content="website" />`,
+      `<meta property="og:site_name" content="BookInn" />`,
+      `<meta property="og:title" content="${escHtml(page.title)}" />`,
+      `<meta property="og:description" content="${escHtml(page.description)}" />`,
+      `<meta property="og:url" content="${escHtml(url)}" />`,
+      `<meta name="twitter:card" content="summary" />`,
+      `<link rel="canonical" href="${escHtml(url)}" />`,
+      count === 0 ? `<meta name="robots" content="noindex, follow" />` : "",
+    ].filter(Boolean).join("\n    ");
+
+    const out = html
+      .replace(/<title>[\s\S]*?<\/title>/, () => `<title>${escHtml(page.title)}</title>`)
+      .replace(/<meta name="description"[^>]*>/, () => `<meta name="description" content="${escHtml(page.description)}" />`)
+      .replace(/<meta name="keywords"[^>]*>\s*/, () => "")
+      .replace("</head>", () => `    ${tags}\n  </head>`)
+      .replace('<div id="root"></div>', () => `<div id="root">${body}</div>`);
+    res.type("html").send(out);
+  }));
+}
 
 app.get(/^(?!\/api).*/, (req, res, next) => {
   res.sendFile(path.join(distPath, "index.html"), (err) => {
