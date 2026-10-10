@@ -4825,8 +4825,8 @@ const VIEW_TO_PATH = {
 SEO_PAGES.forEach((pg) => { VIEW_TO_PATH[`landing:${pg.slug}`] = seoPagePath(pg); });
 const PATH_TO_VIEW = Object.fromEntries(Object.entries(VIEW_TO_PATH).map(([v, p]) => [p, v]));
 // Keep in sync with <title> / meta description in index.html.
-const DEFAULT_PAGE_TITLE = "Student Hostels Near Legon, KNUST, UCC & UPSA | BookInn";
-const DEFAULT_PAGE_DESC = "Find student hostels, self-contained rooms & apartments near Legon, KNUST, UCC, UPSA & UEW. Compare 1 to 4-in-a-room prices and WhatsApp owners directly.";
+const DEFAULT_PAGE_TITLE = "Student Hostels Near KTU, Legon, UPSA, CU & RMU | BookInn";
+const DEFAULT_PAGE_DESC = "Find student hostels, self-contained rooms & apartments near KTU, Legon, UPSA, CU & RMU. Compare 1 to 4-in-a-room prices and WhatsApp owners directly.";
 const isLandingView = (v) => typeof v === "string" && v.startsWith("landing:");
 const seoPageForView = (v) => (isLandingView(v) ? SEO_PAGES.find((p) => p.slug === v.slice(8)) || null : null);
 
