@@ -5,7 +5,7 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://bookinngh.com/hostels-near-ktu</loc>
+    <loc>https://bookinngh.com/hostels-near-knust</loc>
     <priority>0.8</priority>
   </url>
   <url>
@@ -13,7 +13,19 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://bookinngh.com/hostels-near-upsa</loc>
+    <loc>https://bookinngh.com/hostels-near-ucc</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-ktu</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-atu</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-ttu</loc>
     <priority>0.8</priority>
   </url>
   <url>
@@ -22,6 +34,18 @@
   </url>
   <url>
     <loc>https://bookinngh.com/hostels-near-rmu</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-uds</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-uhas</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-umat</loc>
     <priority>0.8</priority>
   </url>
   <url>
