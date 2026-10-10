@@ -12,46 +12,32 @@
 export const SEO_PAGES = [
   // ───────── Campuses ─────────
   {
+    slug: "hostels-near-ktu",
+    kind: "campus",
+    name: "KTU, Koforidua",
+    short: "KTU",
+    keywords: ["ktu", "koforidua technical", "koforidua"],
+    title: "Hostels Near KTU, Koforidua | Student Rooms | BookInn",
+    description:
+      "Find student hostels, self-contained rooms and apartments near Koforidua Technical University (KTU). Compare room types and prices and WhatsApp owners directly.",
+    h1: "Hostels near KTU, Koforidua",
+    intro:
+      "Browse student hostels, self-contained rooms and apartments near Koforidua Technical University (KTU). Compare room types and prices, then contact owners directly on WhatsApp.",
+    related: [],
+  },
+  {
     slug: "hostels-around-legon",
     kind: "campus",
     name: "Legon (University of Ghana)",
     short: "Legon",
-    keywords: ["legon", "university of ghana"],
+    keywords: ["legon", "university of ghana", "ug"],
     title: "Hostels Around Legon (UG) | Student Rooms | BookInn",
     description:
       "Find student hostels, self-contained rooms and apartments around Legon and the University of Ghana. Compare 1 to 4-in-a-room options and WhatsApp owners.",
     h1: "Hostels around Legon and the University of Ghana",
     intro:
-      "Browse student hostels, self-contained rooms and shared apartments around the University of Ghana, Legon, including North Legon, East Legon, Madina and Haatso. Compare room types from one-in-a-room to four-in-a-room and contact owners directly on WhatsApp.",
-    related: ["hostels-in-north-legon", "hostels-in-east-legon", "hostels-in-madina"],
-  },
-  {
-    slug: "hostels-near-knust",
-    kind: "campus",
-    name: "KNUST, Kumasi",
-    short: "KNUST",
-    keywords: ["knust", "kwame nkrumah", "kumasi"],
-    title: "Hostels Near KNUST, Kumasi | Student Rooms | BookInn",
-    description:
-      "Find student hostels and self-contained rooms near KNUST in Kumasi, including Ayeduase, Bomso and Kotei. Compare room types and prices, then WhatsApp owners.",
-    h1: "Hostels near KNUST, Kumasi",
-    intro:
-      "Browse student hostels and apartments near Kwame Nkrumah University of Science and Technology, including popular student areas such as Ayeduase, Bomso, Kotei and Boadi. Compare room types and prices, then message owners on WhatsApp.",
-    related: ["hostels-in-ayeduase", "hostels-in-bomso"],
-  },
-  {
-    slug: "hostels-near-ucc",
-    kind: "campus",
-    name: "UCC, Cape Coast",
-    short: "UCC",
-    keywords: ["ucc", "university of cape coast", "cape coast"],
-    title: "Hostels Near UCC, Cape Coast | Student Rooms | BookInn",
-    description:
-      "Find student hostels, self-contained rooms and apartments near the University of Cape Coast (UCC). Compare options and WhatsApp owners directly.",
-    h1: "Hostels near UCC, Cape Coast",
-    intro:
-      "Browse student hostels and apartments near the University of Cape Coast. Compare room types, prices and facilities, and contact owners directly.",
-    related: [],
+      "Browse student hostels, self-contained rooms and shared apartments around the University of Ghana, Legon, including North Legon and Madina. Compare room types from one-in-a-room to four-in-a-room and contact owners directly on WhatsApp.",
+    related: ["hostels-near-upsa", "hostels-in-north-legon", "hostels-in-madina"],
   },
   {
     slug: "hostels-near-upsa",
@@ -61,56 +47,42 @@ export const SEO_PAGES = [
     keywords: ["upsa", "university of professional studies"],
     title: "Hostels Near UPSA, Accra | Student Rooms | BookInn",
     description:
-      "Find student hostels, self-contained rooms and apartments near UPSA in Accra, around Madina, Haatso and North Legon. Compare prices and WhatsApp owners.",
+      "Find student hostels, self-contained rooms and apartments near UPSA in Accra, around Madina and North Legon. Compare prices and WhatsApp owners directly.",
     h1: "Hostels near UPSA, Accra",
     intro:
-      "Browse student hostels and apartments near the University of Professional Studies, Accra (UPSA), including nearby areas like Madina, Haatso and Atomic. Compare room types and contact owners directly.",
-    related: ["hostels-in-madina", "hostels-in-north-legon"],
+      "Browse student hostels and apartments near the University of Professional Studies, Accra (UPSA), including nearby areas like Madina and North Legon. Compare room types and contact owners directly.",
+    related: ["hostels-around-legon", "hostels-in-madina"],
   },
   {
-    slug: "hostels-near-uew",
+    slug: "hostels-near-cu",
     kind: "campus",
-    name: "UEW, Winneba",
-    short: "UEW",
-    keywords: ["uew", "university of education", "winneba"],
-    title: "Hostels Near UEW, Winneba | Student Rooms | BookInn",
+    name: "Central University (CU)",
+    short: "CU",
+    keywords: ["central university", "cu"],
+    title: "Hostels Near CU | Central University Student Rooms | BookInn",
     description:
-      "Find student hostels, self-contained rooms and apartments near the University of Education, Winneba (UEW). Compare options and WhatsApp owners directly.",
-    h1: "Hostels near UEW, Winneba",
+      "Find student hostels, self-contained rooms and apartments near Central University (CU). Compare room types and prices and WhatsApp owners directly.",
+    h1: "Hostels near Central University (CU)",
     intro:
-      "Browse student hostels and apartments near the University of Education, Winneba. Compare room types, prices and facilities, and message owners directly.",
+      "Browse student hostels, self-contained rooms and apartments near Central University (CU). Compare room types and prices, then contact owners directly on WhatsApp.",
+    related: [],
+  },
+  {
+    slug: "hostels-near-rmu",
+    kind: "campus",
+    name: "RMU, Nungua",
+    short: "RMU",
+    keywords: ["rmu", "regional maritime", "nungua"],
+    title: "Hostels Near RMU, Nungua | Student Rooms | BookInn",
+    description:
+      "Find student hostels, self-contained rooms and apartments near the Regional Maritime University (RMU) in Nungua. Compare prices and WhatsApp owners directly.",
+    h1: "Hostels near RMU, Nungua",
+    intro:
+      "Browse student hostels, self-contained rooms and apartments near the Regional Maritime University (RMU), Nungua. Compare room types and prices, then contact owners directly on WhatsApp.",
     related: [],
   },
 
   // ───────── Student neighbourhoods ─────────
-  {
-    slug: "hostels-in-ayeduase",
-    kind: "area",
-    name: "Ayeduase, Kumasi",
-    short: "Ayeduase",
-    keywords: ["ayeduase"],
-    title: "Hostels in Ayeduase, Kumasi | Near KNUST | BookInn",
-    description:
-      "Student hostels and self-contained rooms in Ayeduase, right next to KNUST. Compare one to four-in-a-room options and WhatsApp owners directly.",
-    h1: "Hostels in Ayeduase, near KNUST",
-    intro:
-      "Ayeduase is one of the most popular student areas next to KNUST. Browse hostels and self-contained rooms here, compare room types and prices, and contact owners directly.",
-    related: ["hostels-near-knust", "hostels-in-bomso"],
-  },
-  {
-    slug: "hostels-in-bomso",
-    kind: "area",
-    name: "Bomso, Kumasi",
-    short: "Bomso",
-    keywords: ["bomso"],
-    title: "Hostels in Bomso, Kumasi | Near KNUST | BookInn",
-    description:
-      "Student hostels and self-contained rooms in Bomso near KNUST. Compare room types and prices and WhatsApp owners directly.",
-    h1: "Hostels in Bomso, near KNUST",
-    intro:
-      "Bomso is a busy student community close to KNUST. Browse hostels and apartments here, compare room types and prices, and message owners on WhatsApp.",
-    related: ["hostels-near-knust", "hostels-in-ayeduase"],
-  },
   {
     slug: "hostels-in-madina",
     kind: "area",
@@ -124,20 +96,6 @@ export const SEO_PAGES = [
     intro:
       "Madina is a popular, more affordable option for students of the University of Ghana and UPSA. Browse hostels and rooms here and contact owners directly.",
     related: ["hostels-around-legon", "hostels-near-upsa"],
-  },
-  {
-    slug: "hostels-in-east-legon",
-    kind: "area",
-    name: "East Legon, Accra",
-    short: "East Legon",
-    keywords: ["east legon"],
-    title: "Hostels in East Legon, Accra | Student Rooms | BookInn",
-    description:
-      "Student hostels and apartments in East Legon, near the University of Ghana. Compare room types and prices and WhatsApp owners directly.",
-    h1: "Hostels in East Legon, Accra",
-    intro:
-      "Browse student hostels and apartments in East Legon, close to the University of Ghana. Compare room types and prices and message owners directly.",
-    related: ["hostels-around-legon", "hostels-in-north-legon"],
   },
   {
     slug: "hostels-in-north-legon",
@@ -167,5 +125,6 @@ export function matchesSeoPage(listing, page) {
     .filter(Boolean)
     .join(" | ")
     .toLowerCase()} `;
-  return page.keywords.some((k) => hay.includes(k.toLowerCase()));
+  // Whole-word match, so short names like "cu" or "ug" don't match inside other words.
+  return page.keywords.some((k) => new RegExp(`\\b${k.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(hay));
 }
