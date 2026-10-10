@@ -4,6 +4,7 @@ import PlatformAdminEmails from "./AdminEmails.jsx";
 import GoogleAuthButton, { GOOGLE_CLIENT_ID, GoogleOneTap, GoogleSignInSheet, disableGoogleAutoSelect } from "./GoogleAuth.jsx";
 import { PrivacyPolicyView, TermsView, CookiePolicyView } from "./LegalPages.jsx";
 import { C } from "./theme.js";
+import { SEO_PAGES, seoPagePath, findSeoPageByPath, matchesSeoPage } from "../shared/seoPages.js";
 import { getListingCoords } from "./mapCoords.js";
 import { Badge, PrimaryButton, GhostButton, AdminStatCard, DataTable, RoleBadge } from "./adminUI.jsx";
 import {
@@ -197,7 +198,7 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
               {navItem("saved", `Saved${favCount ? ` (${favCount})` : ""}`)}
               <button
                 onClick={() => { onListPropertyClick(); setMobileOpen(false); }}
-                style={{ color: view === "pricing" || view === "admin" ? C.white : "rgba(255,255,255,0.85)" }}
+                style={{ color: view === "admin" ? C.white : "rgba(255,255,255,0.85)" }}
                 className="text-sm font-semibold hover:text-white transition px-1"
               >
                 List your property
@@ -319,7 +320,7 @@ function Header({ view, setView, favCount, mobileOpen, setMobileOpen, user, onOw
 /* ---------------------------------------------------------
    HERO + SEARCH
 --------------------------------------------------------- */
-function Hero({ searchQuery, setSearchQuery, studentUniversity }) {
+function Hero({ searchQuery, setSearchQuery, studentUniversity, landingPage = null }) {
   return (
     <div style={{ background: `linear-gradient(180deg, ${C.navy} 0%, ${C.blue} 100%)` }} className="pb-16 pt-8 md:pt-12">
       <div className="max-w-6xl mx-auto px-4 md:px-6">
@@ -330,9 +331,11 @@ function Hero({ searchQuery, setSearchQuery, studentUniversity }) {
             </span>
           </div>
         )}
-        <h1 className="text-white text-2xl md:text-4xl font-extrabold mb-2">Find student accommodation near your campus</h1>
+        <h1 className="text-white text-2xl md:text-4xl font-extrabold mb-2">{landingPage ? landingPage.h1 : "Find student hostels and apartments near your campus in Ghana"}</h1>
         <p style={{ color: "rgba(255,255,255,0.85)" }} className="text-sm md:text-base mb-6">
-          {studentUniversity
+          {landingPage
+            ? landingPage.intro
+            : studentUniversity
             ? `Compare hostels, self-contained units and shared apartments around ${studentUniversity} — contactable in one tap.`
             : "Compare hostels, self-contained units and shared apartments near university campuses across Ghana — contactable in one tap."}
         </p>
@@ -759,7 +762,15 @@ function ListingCard({ listing, isFav, toggleFav, onOpen, vertical = false }) {
 /* ---------------------------------------------------------
    HOME VIEW
 --------------------------------------------------------- */
-function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, studentUniversity, universities }) {
+function HomeView({ favorites, toggleFav, onOpenListing, listings: allListings, loading, studentUniversity, universities, landingPage = null, goTo }) {
+  // On a campus/neighbourhood landing page, show just the matching listings. If none
+  // match yet, fall back to everything so the page is never an empty dead end.
+  const landingMatches = useMemo(
+    () => (landingPage ? allListings.filter((l) => matchesSeoPage(l, landingPage)) : []),
+    [allListings, landingPage]
+  );
+  const landingEmpty = !!landingPage && !loading && landingMatches.length === 0;
+  const listings = landingPage && !landingEmpty ? landingMatches : allListings;
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState(DEFAULT_FILTERS);
   const [sort, setSort] = useState("recommended");
@@ -837,7 +848,7 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
 
   return (
     <div>
-      <Hero searchQuery={searchQuery} setSearchQuery={setSearchQuery} studentUniversity={studentUniversity} />
+      <Hero searchQuery={searchQuery} setSearchQuery={setSearchQuery} studentUniversity={studentUniversity} landingPage={landingPage} />
 
       <div className="max-w-6xl mx-auto px-4 md:px-6 -mt-8 pb-16">
         {studentUniversity && (
@@ -861,6 +872,11 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
           </div>
         )}
 
+        {landingEmpty && (
+          <div style={{ background: C.blueMist, borderColor: C.border, color: C.gray600 }} className="border rounded-md px-3.5 py-2.5 text-sm mb-4">
+            No listings near <span style={{ color: C.ink }} className="font-semibold">{landingPage.short}</span> yet — here are stays on BookInn you can browse in the meantime. Property owner? List yours for free from your dashboard.
+          </div>
+        )}
         <FilterBar filters={filters} setFilters={setFilters} resultCount={filtered.length} universities={universities} showUniversityFilter={!studentUniversity} />
 
         <div>
@@ -963,6 +979,25 @@ function HomeView({ favorites, toggleFav, onOpenListing, listings, loading, stud
             </div>
           )}
         </div>
+
+        {landingPage && (
+          <div className="mt-10">
+            <h2 style={{ color: C.ink }} className="font-bold text-base mb-3">More student accommodation searches</h2>
+            <div className="flex flex-wrap gap-2">
+              {SEO_PAGES.filter((p) => p.slug !== landingPage.slug).map((p) => (
+                <a
+                  key={p.slug}
+                  href={seoPagePath(p)}
+                  onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; e.preventDefault(); goTo(`landing:${p.slug}`); window.scrollTo(0, 0); }}
+                  style={{ borderColor: C.border, color: C.blue }}
+                  className="border rounded-full px-3 py-1 text-xs font-semibold bg-white hover:bg-gray-50 transition"
+                >
+                  {p.short} hostels
+                </a>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
@@ -1798,57 +1833,6 @@ function SavedView({ listings, favorites, toggleFav, onOpenListing }) {
           ))}
         </div>
       )}
-    </div>
-  );
-}
-
-/* ---------------------------------------------------------
-   PRICING / LIST-YOUR-PROPERTY VIEW
---------------------------------------------------------- */
-function PricingView({ onGoToDashboard }) {
-  return (
-    <div>
-      <div style={{ background: `linear-gradient(180deg, ${C.navy} 0%, ${C.blue} 100%)` }} className="py-14">
-        <div className="max-w-4xl mx-auto px-4 md:px-6 text-center">
-          <h1 className="text-white text-2xl md:text-3xl font-extrabold mb-3">Reach more students, faster</h1>
-          <p style={{ color: "rgba(255,255,255,0.85)" }} className="text-sm md:text-base max-w-2xl mx-auto">
-            List your hostel or apartment on BookInn and get discovered by students searching by campus, price and room type.
-          </p>
-        </div>
-      </div>
-
-      <div className="max-w-3xl mx-auto px-4 md:px-6 -mt-8 pb-16">
-        <div style={{ background: C.blueLight, borderColor: C.border }} className="border rounded-lg p-4 mb-6 flex items-start gap-3">
-          <Sparkles size={18} color={C.blue} className="mt-0.5 shrink-0" />
-          <p style={{ color: C.navy }} className="text-sm">
-            <span className="font-bold">Listing is free.</span> Create an Owner or Agent account and publish your listing from the dashboard — no card required, no plan to choose.
-          </p>
-        </div>
-
-        <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white mb-4">
-          <h3 style={{ color: C.ink }} className="font-bold text-lg mb-3">What you get</h3>
-          <ul className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-            {[
-                           "Up to 3 hostel/apartment listings (unlimited for Agent accounts)", "Up to 20 photos per listing", "Video tour", "Virtual walkthrough",
-              "WhatsApp enquiries", "Top-of-search placement", "Homepage placement", "Analytics",
-            ].map((f) => (
-              <li key={f} style={{ color: C.gray600 }} className="text-sm flex items-start gap-2">
-                <Check size={15} color={C.blue} className="mt-0.5 shrink-0" /> {f}
-              </li>
-            ))}
-          </ul>
-        </div>
-
-        <div style={{ borderColor: C.border }} className="border rounded-lg p-6 bg-white flex items-center justify-between flex-wrap gap-4">
-          <div>
-            <h3 style={{ color: C.ink }} className="font-bold text-base mb-1">Already have a listing?</h3>
-            <p style={{ color: C.gray600 }} className="text-sm">Manage rooms, photos and inquiries from your dashboard.</p>
-          </div>
-          <PrimaryButton onClick={onGoToDashboard}>
-            <span className="flex items-center gap-2">Go to dashboard <ArrowRight size={16} /></span>
-          </PrimaryButton>
-        </div>
-      </div>
     </div>
   );
 }
@@ -3200,9 +3184,6 @@ function LoginView({ onAuthSuccess, onGuest, redirectNote, setView, universities
           </PrimaryButton>
           <GhostButton full onClick={onGuest}>Continue as guest</GhostButton>
         </div>
-        <p style={{ color: C.gray600 }} className="text-xs text-center mt-2">
-          Property owner? <button onClick={() => setView("pricing")} style={{ color: C.blue }} className="font-semibold hover:underline">List your property</button>
-        </p>
       </div>
     </div>
   );
@@ -3503,8 +3484,6 @@ function HelpCenterView({ setView }) {
     { q: "How do I leave a review?", a: "Open the listing's detail page and scroll to the reviews section — you can rate your stay and leave a comment there." },
   ];
   const ownerFaqs = [
-    { q: "How do I list my property?", a: "Create an Owner account, choose a subscription plan, then add your listing's details and photos from the Owner dashboard." },
-    { q: "What do the subscription plans include?", a: "Plans differ by how many listings you can post and whether your property gets featured placement. See the Pricing page for a full comparison." },
     { q: "How do I edit or remove a listing?", a: "Go to your Owner dashboard, find the listing, and use the edit or delete controls next to it." },
     { q: "Where do student inquiries go?", a: "Inquiries submitted through your listings are tied to your account so you can follow up with students directly." },
   ];
@@ -3702,7 +3681,6 @@ function Footer({ setView, onOwnerDashboardClick, onListPropertyClick }) {
           <p className="text-white text-sm font-semibold mb-2.5">Property owners</p>
           <ul className="flex flex-col gap-2">
             <FooterLink onClick={onListPropertyClick}>List your property</FooterLink>
-            <FooterLink onClick={() => setView("pricing")}>Pricing</FooterLink>
             <FooterLink onClick={onOwnerDashboardClick}>Owner dashboard</FooterLink>
           </ul>
         </div>
@@ -3723,6 +3701,25 @@ function Footer({ setView, onOwnerDashboardClick, onListPropertyClick }) {
               </a>
             </li>
             <FooterLink onClick={() => setView("safety-tips")}>Safety tips</FooterLink>
+          </ul>
+        </div>
+      </div>
+      <div style={{ borderColor: "rgba(255,255,255,0.15)" }} className="border-t">
+        <div className="max-w-6xl mx-auto px-4 md:px-6 py-5">
+          <p className="text-white text-sm font-semibold mb-2.5">Popular searches</p>
+          <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+            {SEO_PAGES.map((pg) => (
+              <li key={pg.slug}>
+                <a
+                  href={seoPagePath(pg)}
+                  onClick={(e) => { if (e.metaKey || e.ctrlKey || e.shiftKey || e.button) return; e.preventDefault(); setView(`landing:${pg.slug}`); window.scrollTo(0, 0); }}
+                  style={{ color: "rgba(255,255,255,0.65)" }}
+                  className="text-xs hover:text-white hover:underline transition"
+                >
+                  Hostels {pg.kind === "campus" ? (pg.slug === "hostels-around-legon" ? "around" : "near") : "in"} {pg.short}
+                </a>
+              </li>
+            ))}
           </ul>
         </div>
       </div>
@@ -4810,7 +4807,6 @@ function AdminLoginView({ onAuthSuccess }) {
 const VIEW_TO_PATH = {
   home: "/",
   saved: "/saved",
-  pricing: "/pricing",
   account: "/account",
   admin: "/owner-dashboard",       // per-owner listings dashboard
   login: "/login",
@@ -4825,7 +4821,14 @@ const VIEW_TO_PATH = {
   "cookie-policy": "/cookie-policy",
   "platform-admin": "/platform-admin",
 };
+// SEO landing pages (campus / neighbourhood searches) — view name is "landing:<slug>".
+SEO_PAGES.forEach((pg) => { VIEW_TO_PATH[`landing:${pg.slug}`] = seoPagePath(pg); });
 const PATH_TO_VIEW = Object.fromEntries(Object.entries(VIEW_TO_PATH).map(([v, p]) => [p, v]));
+// Keep in sync with <title> / meta description in index.html.
+const DEFAULT_PAGE_TITLE = "Student Hostels Near Legon, KNUST, UCC & UPSA | BookInn";
+const DEFAULT_PAGE_DESC = "Find student hostels, self-contained rooms & apartments near Legon, KNUST, UCC, UPSA & UEW. Compare 1 to 4-in-a-room prices and WhatsApp owners directly.";
+const isLandingView = (v) => typeof v === "string" && v.startsWith("landing:");
+const seoPageForView = (v) => (isLandingView(v) ? SEO_PAGES.find((p) => p.slug === v.slice(8)) || null : null);
 
 // Shareable property links: /listing/12-bae-dream  (only the leading number matters;
 // the name part is just there so the link reads nicely in a chat).
@@ -4863,7 +4866,7 @@ async function shareListingLink(listing) {
 
 function viewFromPath(pathname) {
   if (listingIdFromPath(pathname) != null) return "detail";
-  return PATH_TO_VIEW[pathname] || "home";
+  return PATH_TO_VIEW[pathname.replace(/\/+$/, "") || "/"] || "home";
 }
 
 // Owner and Agent accounts share the same listing dashboard — this just
@@ -5002,8 +5005,17 @@ export default function App() {
     else setDeepLink((d) => (d === "restricted" ? null : d));
   }, [view, selectedListing, studentUniversity]);
 
+  // Keep <title> and the meta description in step with client-side navigation
+  // (the server already sends the right ones on a fresh page load / for crawlers).
   React.useEffect(() => {
-    if (view !== "home") return;
+    if (view === "detail") return; // property pages get their own tags from the server
+    const pg = seoPageForView(view);
+    document.title = pg ? pg.title : DEFAULT_PAGE_TITLE;
+    document.querySelector('meta[name="description"]')?.setAttribute("content", pg ? pg.description : DEFAULT_PAGE_DESC);
+  }, [view]);
+
+  React.useEffect(() => {
+    if (view !== "home" && !isLandingView(view)) return;
     setListingsLoading((prev) => (listings.length === 0 ? true : prev));
     api.getListings(studentUniversity)
       .then((data) => setListings(data.listings))
@@ -5175,8 +5187,7 @@ export default function App() {
   // "List your property" drops any signed-in Owner/Agent straight into their dashboard.
   const goToListProperty = () => {
     if (!user) { setAuthRedirect("admin"); setView("login"); return; }
-    if (isListingManagerRole(user.role)) { setView("admin"); }
-    else { setView("pricing"); }
+    setView("admin"); // non-Owner/Agent accounts see NotOwnerNotice there
   };
 
   // Used by the platform admin's "Manage listings" button — signs the admin's
@@ -5241,14 +5252,14 @@ export default function App() {
       />
 
       <main className="flex-1">
-        {view === "home" && (
+        {(view === "home" || isLandingView(view)) && (
           listingsError ? (
             <div className="max-w-6xl mx-auto px-4 py-16 text-center">
               <p style={{ color: C.ink }} className="font-semibold mb-1">Couldn't load listings</p>
               <p style={{ color: C.gray600 }} className="text-sm">{listingsError} — is the backend server running? Try <code>npm run dev:all</code>.</p>
             </div>
           ) : (
-            <HomeView favorites={favorites} toggleFav={toggleFav} onOpenListing={openListing} listings={listings} loading={listingsLoading} studentUniversity={studentUniversity} universities={universities} />
+            <HomeView favorites={favorites} toggleFav={toggleFav} onOpenListing={openListing} listings={listings} loading={listingsLoading} studentUniversity={studentUniversity} universities={universities} landingPage={seoPageForView(view)} goTo={setView} />
           )
         )}
        {view === "detail" && deepLink && (
@@ -5267,7 +5278,6 @@ export default function App() {
           />
         )}
         {view === "saved" && <SavedView listings={listings} favorites={favorites} toggleFav={toggleFav} onOpenListing={openListing} />}
-        {view === "pricing" && <PricingView onGoToDashboard={goToAdmin} />}
         {view === "how-it-works" && <HowBookingWorksView setView={setView} />}
         {view === "help-center" && <HelpCenterView setView={setView} />}
         {view === "safety-tips" && <SafetyTipsView setView={setView} />}
