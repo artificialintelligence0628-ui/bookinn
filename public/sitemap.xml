@@ -5,15 +5,11 @@
     <priority>1.0</priority>
   </url>
   <url>
+    <loc>https://bookinngh.com/hostels-near-ktu</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
     <loc>https://bookinngh.com/hostels-around-legon</loc>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://bookinngh.com/hostels-near-knust</loc>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://bookinngh.com/hostels-near-ucc</loc>
     <priority>0.8</priority>
   </url>
   <url>
@@ -21,23 +17,15 @@
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://bookinngh.com/hostels-near-uew</loc>
+    <loc>https://bookinngh.com/hostels-near-cu</loc>
     <priority>0.8</priority>
   </url>
   <url>
-    <loc>https://bookinngh.com/hostels-in-ayeduase</loc>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://bookinngh.com/hostels-in-bomso</loc>
+    <loc>https://bookinngh.com/hostels-near-rmu</loc>
     <priority>0.8</priority>
   </url>
   <url>
     <loc>https://bookinngh.com/hostels-in-madina</loc>
-    <priority>0.8</priority>
-  </url>
-  <url>
-    <loc>https://bookinngh.com/hostels-in-east-legon</loc>
     <priority>0.8</priority>
   </url>
   <url>
