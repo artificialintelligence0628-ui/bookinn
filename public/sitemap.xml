@@ -5,8 +5,44 @@
     <priority>1.0</priority>
   </url>
   <url>
-    <loc>https://bookinngh.com/pricing</loc>
-    <priority>0.6</priority>
+    <loc>https://bookinngh.com/hostels-around-legon</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-knust</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-ucc</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-upsa</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-near-uew</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-in-ayeduase</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-in-bomso</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-in-madina</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-in-east-legon</loc>
+    <priority>0.8</priority>
+  </url>
+  <url>
+    <loc>https://bookinngh.com/hostels-in-north-legon</loc>
+    <priority>0.8</priority>
   </url>
   <url>
     <loc>https://bookinngh.com/how-it-works</loc>
