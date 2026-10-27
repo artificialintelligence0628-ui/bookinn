@@ -1,12 +1,40 @@
 const BASE = "/api";
-async function request(path, { method = "GET", body, token } = {}) {
+
+// Cold-start detection. On Render's free tier the server sleeps when idle, so the
+// first request after a quiet spell can hang for 30-60s. If any request is still
+// pending after SLOW_MS we tell <ServerStatus /> (src/ServerStatus.jsx) to show a
+// friendly "waking up" banner; it disappears as soon as the slow request settles.
+const SLOW_MS = 4000;
+const slowRequests = new Set();
+const slowSubscribers = new Set();
+const notifySlow = () => slowSubscribers.forEach((fn) => fn(slowRequests.size > 0));
+export function subscribeSlowServer(fn) {
+  slowSubscribers.add(fn);
+  return () => slowSubscribers.delete(fn);
+}
+function watchSlow() {
+  const id = Symbol("request");
+  const timer = setTimeout(() => { slowRequests.add(id); notifySlow(); }, SLOW_MS);
+  return () => {
+    clearTimeout(timer);
+    if (slowRequests.delete(id)) notifySlow();
+  };
+}
+
+async function request(path, { method = "GET", body, token, quiet = false } = {}) {
   const headers = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  const done = quiet ? () => {} : watchSlow();
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+  } finally {
+    done();
+  }
   let data = null;
   try {
     data = await res.json();
@@ -47,7 +75,7 @@ export const api = {
   updateListing: (id, listing, token) => request(`/listings/${id}`, { method: "PUT", body: listing, token }),
   deleteListing: (id, token) => request(`/listings/${id}`, { method: "DELETE", token }),
   addReview: (id, review) => request(`/listings/${id}/reviews`, { method: "POST", body: review }),
-  recordView: (id) => request(`/listings/${id}/view`, { method: "POST" }).catch(() => {}),
+  recordView: (id) => request(`/listings/${id}/view`, { method: "POST", quiet: true }).catch(() => {}),
   signup: (name, email, password, role, university, consent = {}) => request("/auth/signup", { method: "POST", body: { name, email, password, role, university, ...consent } }),
   login: (email, password) => request("/auth/login", { method: "POST", body: { email, password } }),
   googleAuth: (credential, role, university, consent = {}) => request("/auth/google", { method: "POST", body: { credential, role, university, ...consent } }),
