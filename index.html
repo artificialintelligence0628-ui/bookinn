@@ -10,6 +10,14 @@
     <title>Student Hostels in Ghana | KTU, CU, ATU, RMU, KNUST, UG, UMat, TTU, UDS, UHAS, UEAS, UCC, UPSA | BookInn</title>
   </head>
   <body>
+    <!-- Branded splash shown until React mounts; ServerStatus.jsx removes it.
+         Kept OUTSIDE #root because server/index.js injects SEO content by matching the empty root element below. -->
+    <style>
+      #bi-splash{position:fixed;inset:0;z-index:9998;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;background:#f0f6fc;color:#003580;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+      .bi-spin{width:34px;height:34px;border:4px solid #cfe3f5;border-top-color:#0071c2;border-radius:50%;animation:bi-rot .8s linear infinite}
+      @keyframes bi-rot{to{transform:rotate(360deg)}}
+    </style>
+    <div id="bi-splash"><div class="bi-spin"></div><div style="font-weight:600">Loading BookInn…</div></div>
     <div id="root"></div>
     <script type="module" src="/src/main.jsx"></script>
   </body>
