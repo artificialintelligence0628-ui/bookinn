@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import { api } from "./api.js";
 import PlatformAdminEmails from "./AdminEmails.jsx";
+import { getCampusCentre } from "./mapCoords.js";
 import GoogleAuthButton, { GOOGLE_CLIENT_ID, GoogleOneTap, GoogleSignInSheet, disableGoogleAutoSelect } from "./GoogleAuth.jsx";
 import { PrivacyPolicyView, TermsView, CookiePolicyView } from "./LegalPages.jsx";
 import { C } from "./theme.js";
@@ -8,7 +9,7 @@ import { SEO_PAGES, seoPagePath, findSeoPageByPath, matchesSeoPage } from "../sh
 import { getListingCoords } from "./mapCoords.js";
 import { Badge, PrimaryButton, GhostButton, AdminStatCard, DataTable, RoleBadge } from "./adminUI.jsx";
 import {
-  Search, MapPin, Star, Wifi, Droplet, Zap, UtensilsCrossed, ShieldCheck,
+  Search, MapPin, Navigation, Star, Wifi, Droplet, Zap, UtensilsCrossed, ShieldCheck,
   Car, Heart, X, Menu, Phone, Mail, MessageCircle, PlayCircle, ChevronLeft,
   ChevronRight, SlidersHorizontal, Check, Building2, Users, TrendingUp,
   LayoutDashboard, Plus, LogIn, BedDouble, Bath, Sparkles, ArrowRight,
@@ -35,6 +36,7 @@ import apartment2 from "./assets/images/apartment2.jpg";
 import single3 from "./assets/images/single3.jpg";
 import hostel4 from "./assets/images/hostel4.jpg";
 import selfcon5 from "./assets/images/selfcon5.jpg";
+import noPropertyImage from "./assets/images/no-property-image.jpg";
 import ibiIcon from "./assets/brand/ibi-icon.png";
 import bookinnWordmark from "./assets/brand/bookinn-wordmark.png";
 
@@ -133,9 +135,12 @@ const cld = (url, width) => {
   return url.replace("/upload/", `/upload/w_${width},q_auto,f_auto/`);
 };
 
+// Listings with no uploaded photo (empty, or the legacy "hostel1" placeholder key
+// the server used to store) get the BookInn "No Image Yet" graphic.
+const hasRealPhoto = (key) => !!key && key !== "hostel1";
 const img = (key, width) => {
-  const resolved = PROPERTY_IMAGES[key] || key || PROPERTY_IMAGES.hostel1;
-  return cld(resolved, width);
+  if (!hasRealPhoto(key)) return noPropertyImage;
+  return cld(PROPERTY_IMAGES[key] || key, width);
 };
 
 function ScoreBadge({ score, size = "md" }) {
@@ -640,6 +645,7 @@ function FilterBar({ filters, setFilters, resultCount, universities, showUnivers
 // Leaflet is only fetched when someone opens the map.
 const ListingsMap = React.lazy(() => import("./ListingsMap.jsx"));
 const LocationPicker = React.lazy(() => import("./LocationPicker.jsx"));
+const ListingLocationMap = React.lazy(() => import("./ListingLocationMap.jsx"));
 
 /* Grid / list / map switch */
 function ViewToggle({ view, setView }) {
@@ -1568,13 +1574,77 @@ function DeepLinkNotice({ status, onBrowse }) {
   );
 }
 
+/* ---------------------------------------------------------
+   PROPERTY LOCATION — map + "Get directions" on every listing
+--------------------------------------------------------- */
+function PropertyLocation({ listing }) {
+  const hasPin = listing.lat != null && listing.lat !== "" && listing.lng != null && listing.lng !== ""
+    && Number.isFinite(Number(listing.lat)) && Number.isFinite(Number(listing.lng));
+  const campus = hasPin ? null : getCampusCentre(listing.university);
+  const point = hasPin ? { lat: Number(listing.lat), lng: Number(listing.lng) } : campus;
+  const isApple = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent || "");
+
+  if (!point && !listing.locationDescription) return null;
+
+  const dest = point ? `${point.lat},${point.lng}` : "";
+  const googleUrl = point ? `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving` : "";
+  const appleUrl = point ? `http://maps.apple.com/?daddr=${dest}&dirflg=d` : "";
+  const linkStyle = { borderColor: C.blue, color: C.blue };
+
+  return (
+    <div className="mb-6">
+      <h3 style={{ color: C.ink }} className="font-bold text-base mb-2 flex items-center gap-1.5"><MapPin size={16} color={C.blue} /> Location</h3>
+      {listing.locationDescription && (
+        <p style={{ color: C.gray600 }} className="text-sm leading-relaxed mb-3">{listing.locationDescription}</p>
+      )}
+      {point && (
+        <>
+          <React.Suspense fallback={<div style={{ background: C.blueMist, height: 300 }} className="rounded-lg animate-pulse" />}>
+            <ListingLocationMap lat={point.lat} lng={point.lng} name={listing.name} exact={hasPin} />
+          </React.Suspense>
+          {!hasPin && (
+            <p style={{ color: C.gray600 }} className="text-xs mt-2">
+              The owner hasn't pinned the exact building yet. The map shows the area around {listing.university}. Contact them to confirm the exact spot.
+            </p>
+          )}
+          <div className="flex flex-wrap gap-2 mt-3">
+            <a
+              href={googleUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ background: C.blue }}
+              className="inline-flex items-center gap-1.5 text-white text-sm font-semibold px-4 h-10 rounded-md hover:opacity-90"
+            >
+              <Navigation size={16} /> Get directions
+            </a>
+            {isApple && (
+              <a href={appleUrl} target="_blank" rel="noopener noreferrer" style={linkStyle} className="inline-flex items-center gap-1.5 border bg-white text-sm font-semibold px-4 h-10 rounded-md hover:bg-blue-50">
+                Apple Maps
+              </a>
+            )}
+            <a
+              href={`https://www.openstreetmap.org/?mlat=${point.lat}&mlon=${point.lng}#map=18/${point.lat}/${point.lng}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={linkStyle}
+              className="inline-flex items-center gap-1.5 border bg-white text-sm font-semibold px-4 h-10 rounded-md hover:bg-blue-50"
+            >
+              Open full map
+            </a>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
   function DetailView({ listing, onBack, isFav, toggleFav, onReviewAdded, user, onRequireAuth, groupLink = null }) {
   const [showContact, setShowContact] = useState(!!groupLink); // a shared ?group= link opens the booking form straight away
   const [activeImg, setActiveImg] = useState(0);
   const [walkStep, setWalkStep] = useState(0);
   const roomOptions = listing.roomOptions?.length ? listing.roomOptions : [{ roomType: listing.roomType, price: listing.price }];
   const [selectedRoom, setSelectedRoom] = useState(groupLink?.roomType || roomOptions[0]?.roomType || "");
-  const galleryImages = [listing.image, ...(listing.images || [])].filter(Boolean);
+  const galleryImages = [listing.image, ...(listing.images || [])].filter(hasRealPhoto);
   const walkthroughStops = listing.virtualWalkthrough ? (listing.walkthrough || []) : [];
 
   React.useEffect(() => {
@@ -1643,12 +1713,7 @@ function DeepLinkNotice({ status, onBrowse }) {
           <h3 style={{ color: C.ink }} className="font-bold text-base mb-2">About this room</h3>
           <p style={{ color: C.gray600 }} className="text-sm leading-relaxed mb-6">{listing.desc}</p>
 
-          {listing.locationDescription && (
-            <>
-              <h3 style={{ color: C.ink }} className="font-bold text-base mb-2 flex items-center gap-1.5"><MapPin size={16} color={C.blue} /> Location</h3>
-              <p style={{ color: C.gray600 }} className="text-sm leading-relaxed mb-6">{listing.locationDescription}</p>
-            </>
-          )}
+          <PropertyLocation listing={listing} />
 
           <h3 style={{ color: C.ink }} className="font-bold text-base mb-3">Amenities</h3>
           <div className="grid grid-cols-2 gap-2.5 mb-6">
@@ -2163,7 +2228,7 @@ function AdminView({ user, token, listings, maxListings, ownerStats, statsLoadin
         ...(publicMode ? { publicKind: form.publicKind } : {}),
         kitchen: form.kitchen, featured: form.featured, university: form.university,
         amenities: form.amenities, pricingPeriod: form.pricingPeriod,
-        image: form.imageData || existing?.image || "hostel1",
+        image: form.imageData || (hasRealPhoto(existing?.image) ? existing.image : ""),
         images: form.galleryData,
         video: form.videoData, desc: form.desc, locationDescription: form.locationDescription,
         lat: form.pin ? form.pin.lat : null, lng: form.pin ? form.pin.lng : null,
