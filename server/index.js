@@ -829,7 +829,7 @@ app.post("/api/listings", requireAuth, requireCanCreateListing, ah(async (req, r
     rating: l.rating ?? 0,
     reviewCount: l.reviewCount ?? 0,
     featured: planCheck.featured,
-    image: l.image || "hostel1",
+    image: l.image || "",
     images: planCheck.images,
     video: planCheck.video,
     walkthrough: planCheck.walkthrough,
@@ -881,7 +881,7 @@ app.put("/api/listings/:id", requireAuth, requireActiveOwner, requireOwnsListing
     distance: l.distance || "New listing",
     pricingPeriod: l.pricingPeriod || "Per semester",
     featured: planCheck.featured,
-    image: l.image || "hostel1",
+    image: l.image || "",
     images: planCheck.images,
     video: planCheck.video,
     walkthrough: planCheck.walkthrough,
@@ -1295,7 +1295,7 @@ function buildPublicListingFields(l) {
       distance: l.distance || "New listing",
       pricingPeriod: l.pricingPeriod || "Per semester",
       featured: planCheck.featured,
-      image: l.image || "hostel1",
+      image: l.image || "",
       images: planCheck.images,
       video: planCheck.video,
       walkthrough: planCheck.walkthrough,
@@ -1806,7 +1806,7 @@ app.get(/^\/listing\/(\d+)(?:-[^/]*)?\/?$/, ah(async (req, res, next) => {
     : `GH₵${listing.price}`;
   const descRaw = `${rooms} · ${listing.type} near ${listing.university}. ${listing.desc || ""}`.replace(/\s+/g, " ").trim();
   const description = descRaw.length > 200 ? descRaw.slice(0, 197) + "…" : descRaw;
-  const image = [listing.image, ...(listing.images || [])].find((u) => typeof u === "string" && /^https:\/\//.test(u)) || "";
+  const image = [listing.image, ...(listing.images || [])].find((u) => typeof u === "string" && /^https:\/\//.test(u)) || `${SITE_URL}/no-property-image.jpg`;
   const url = `${SITE_URL}/listing/${listing.id}`;
   const tags = [
     `<meta property="og:type" content="website" />`,
