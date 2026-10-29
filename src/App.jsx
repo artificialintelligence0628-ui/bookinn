@@ -1584,11 +1584,11 @@ function PropertyLocation({ listing }) {
   const point = hasPin ? { lat: Number(listing.lat), lng: Number(listing.lng) } : campus;
   const isApple = typeof navigator !== "undefined" && /iPhone|iPad|iPod|Macintosh/i.test(navigator.userAgent || "");
 
-  if (!point && !listing.locationDescription) return null;
-
-  const dest = point ? `${point.lat},${point.lng}` : "";
-  const googleUrl = point ? `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving` : "";
-  const appleUrl = point ? `http://maps.apple.com/?daddr=${dest}&dirflg=d` : "";
+  // No pin and an unknown campus: still offer directions, searched by name.
+  const textDest = encodeURIComponent([listing.name, listing.university, "Ghana"].filter(Boolean).join(", "));
+  const dest = point ? `${point.lat},${point.lng}` : textDest;
+  const googleUrl = `https://www.google.com/maps/dir/?api=1&destination=${dest}&travelmode=driving`;
+  const appleUrl = `http://maps.apple.com/?daddr=${dest}&dirflg=d`;
   const linkStyle = { borderColor: C.blue, color: C.blue };
 
   return (
@@ -1607,33 +1607,40 @@ function PropertyLocation({ listing }) {
               The owner hasn't pinned the exact building yet. The map shows the area around {listing.university}. Contact them to confirm the exact spot.
             </p>
           )}
-          <div className="flex flex-wrap gap-2 mt-3">
-            <a
-              href={googleUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ background: C.blue }}
-              className="inline-flex items-center gap-1.5 text-white text-sm font-semibold px-4 h-10 rounded-md hover:opacity-90"
-            >
-              <Navigation size={16} /> Get directions
-            </a>
-            {isApple && (
-              <a href={appleUrl} target="_blank" rel="noopener noreferrer" style={linkStyle} className="inline-flex items-center gap-1.5 border bg-white text-sm font-semibold px-4 h-10 rounded-md hover:bg-blue-50">
-                Apple Maps
-              </a>
-            )}
-            <a
-              href={`https://www.openstreetmap.org/?mlat=${point.lat}&mlon=${point.lng}#map=18/${point.lat}/${point.lng}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={linkStyle}
-              className="inline-flex items-center gap-1.5 border bg-white text-sm font-semibold px-4 h-10 rounded-md hover:bg-blue-50"
-            >
-              Open full map
-            </a>
-          </div>
         </>
       )}
+      {!point && (
+        <p style={{ color: C.gray600 }} className="text-xs mb-1">
+          The owner hasn't pinned this property on the map yet. Directions below search for it by name.
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2 mt-3">
+        <a
+          href={googleUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{ background: C.blue }}
+          className="inline-flex items-center gap-1.5 text-white text-sm font-semibold px-4 h-10 rounded-md hover:opacity-90"
+        >
+          <Navigation size={16} /> Get directions
+        </a>
+        {isApple && (
+          <a href={appleUrl} target="_blank" rel="noopener noreferrer" style={linkStyle} className="inline-flex items-center gap-1.5 border bg-white text-sm font-semibold px-4 h-10 rounded-md hover:bg-blue-50">
+            Apple Maps
+          </a>
+        )}
+        {point && (
+          <a
+            href={`https://www.openstreetmap.org/?mlat=${point.lat}&mlon=${point.lng}#map=18/${point.lat}/${point.lng}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={linkStyle}
+            className="inline-flex items-center gap-1.5 border bg-white text-sm font-semibold px-4 h-10 rounded-md hover:bg-blue-50"
+          >
+            Open full map
+          </a>
+        )}
+      </div>
     </div>
   );
 }
